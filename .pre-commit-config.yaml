@@ -1,0 +1,27 @@
+repos:
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.8.0
+    hooks:
+      - id: ruff
+        args: [ --fix ]
+      - id: ruff-format
+
+  - repo: local
+    hooks:
+      - id: mypy-formal-check
+        name: mypy (formal-check)
+        entry: uv run --directory formal_check mypy
+        language: system
+        pass_filenames: false
+        files: ^formal_check/
+        types: [ python ]
+
+  - repo: local
+    hooks:
+      - id: pytest-formal-check
+        name: pytest (formal-check)
+        entry: uv run --directory formal_check pytest
+        language: system
+        pass_filenames: false
+        files: ^formal_check/
+        stages: [ pre-push ]
