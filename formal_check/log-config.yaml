@@ -1,0 +1,23 @@
+version: 1
+disable_existing_loggers: false
+
+formatters:
+  base:
+    format: "%(asctime)s | %(process)d | %(thread)s | %(levelname)s | %(name)s | %(funcName)s | %(message)s"
+    datefmt: "%Y-%m-%d %H:%M:%S"
+
+handlers:
+  console:
+    class: logging.StreamHandler
+    formatter: base
+    stream: ext://sys.stdout
+
+loggers:
+  src:
+    level: DEBUG
+    handlers: [ console ]
+    propagate: false
+
+root:
+  level: INFO
+  handlers: [ console ]
