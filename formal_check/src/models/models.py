@@ -10,6 +10,17 @@ class Status(StrEnum):
     TIMEOUT = "timeout"
 
 
+class ValidationErrorItem(BaseModel):
+    type: str
+    location: str
+    message: str
+
+
+class ModelInvalid(BaseModel):
+    status: str = "MODEL_INVALID"
+    errors: list[ValidationErrorItem]
+
+
 class RunnerOutput(BaseModel):
     stdout: str
     stderr: str
