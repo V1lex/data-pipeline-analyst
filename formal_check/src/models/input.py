@@ -194,7 +194,7 @@ class Variable(InputBaseModel):
 
 class Transition(InputBaseModel):
     name: str = Field(min_length=1)
-    guard: BooleanExpression
+    guard: BooleanExpression | None = None
     effects: list[Effect] = Field(min_length=1)
 
 
@@ -238,3 +238,9 @@ class Input(InputBaseModel):
     def _ensure_unique(label: str, values: list[str]) -> None:
         if len(values) != len(set(values)):
             raise ValueError(f"{label[0].upper()}{label[1:]} must be unique")
+
+    def get_deadlock_free_property(self) -> Property | None:
+        for prop in self.properties:
+            if prop.type is PropertyType.DEADLOCK_FREE:
+                return prop
+        return None

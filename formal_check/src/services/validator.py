@@ -125,10 +125,12 @@ def _validate_properties(
 
 
 def _validate_expression(
-    expression: BooleanExpression,
+    expression: BooleanExpression | None,
     location: str,
     variables: Mapping[str, Variable],
 ) -> list[ValidationErrorItem]:
+    if expression is None:
+        return []
     _ = (expression, location, variables)
     return []
 

@@ -10,5 +10,5 @@ TLC_JAR_PATH = Path(os.environ["TLC_JAR_PATH"]).resolve()
 MODELS_DIR = (PROJECT_ROOT / "models").resolve()
 STATES_DIR = (PROJECT_ROOT / "states").resolve()
 
-MODEL_PATH = MODELS_DIR / "test.tla"
-CONFIG_PATH = MODELS_DIR / "test.cfg"
+MODEL_PATH = MODELS_DIR / "model.tla"
+CONFIG_PATH = MODELS_DIR / "model.cfg"

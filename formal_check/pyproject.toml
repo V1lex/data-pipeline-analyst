@@ -33,7 +33,7 @@ pythonpath = ["src"]
 [tool.ruff.lint]
 extend-select = ["I", "UP", "F", "B"]
 ignore = ["PIE790"]
-fixable = ["I", "UP", "F401"]
+fixable = ["I", "UP", "F"]
 
 [tool.mypy]
 plugins = [
