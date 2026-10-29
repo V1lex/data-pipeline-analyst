@@ -10,7 +10,7 @@ from src.models.input import (
     Variable,
     VariableType,
 )
-from src.models.models import ModelInvalid, ValidationErrorItem
+from src.models.output import ModelInvalid, ValidationErrorItem
 
 type ValidationResult = Input | ModelInvalid
 

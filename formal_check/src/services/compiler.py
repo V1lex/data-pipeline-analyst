@@ -1,4 +1,4 @@
-from src.config import CONFIG_PATH, MODEL_PATH
+from src.config import MODEL_NAME, MODEL_PATH, SAFETY_CONFIG_PATH
 from src.models.input import (
     Add,
     And,
@@ -23,7 +23,8 @@ from src.models.input import (
 
 
 def compile_input(input_data: Input) -> None:
-    specification = "---- MODULE module ----\n\n"
+    specification = f"---- MODULE {MODEL_NAME} ----\n"
+    specification += "EXTENDS Integers\n\n"
 
     var_names = set(variable.name for variable in input_data.variables)
     specification += _compile_variables(var_names)
@@ -43,13 +44,13 @@ def compile_input(input_data: Input) -> None:
 
     config = "SPECIFICATION Spec\nCHECK_DEADLOCK FALSE\nPROPERTY IsDAG"
 
+    # TODO: Add reachable configs creation
+
     for prop in input_data.properties:
-        if prop.type is PropertyType.REACHABLE:
-            config += f"\nPROPERTY {prop.id}"
-        else:
+        if prop.type is not PropertyType.REACHABLE:
             config += f"\nINVARIANT {prop.id}"
 
-    with open(CONFIG_PATH, "w", encoding="utf-8") as f:
+    with open(SAFETY_CONFIG_PATH, "w", encoding="utf-8") as f:
         f.write(config)
 
 
@@ -145,6 +146,10 @@ def _compile_binary_expression(expression: BinaryExpression) -> str:
             symbol = "+"
         case Sub(sub=(left, right)):
             symbol = "-"
+        case _:
+            raise TypeError(
+                f"Unsupported binary expression: {type(expression).__name__}"
+            )
     return f"(({_compile_expression(left)}) {symbol} ({_compile_expression(right)}))"
 
 
