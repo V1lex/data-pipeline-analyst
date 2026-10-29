@@ -221,3 +221,6 @@ __marimo__/
 
 # java
 *.jar
+
+# formal_check
+formal_check/models/
