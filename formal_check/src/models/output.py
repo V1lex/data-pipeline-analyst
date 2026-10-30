@@ -1,6 +1,6 @@
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 
 class Statistics(BaseModel):
@@ -10,8 +10,8 @@ class Statistics(BaseModel):
 
 
 class PropertyHolds(BaseModel):
-    status: str = Field(default="PROPERTY_HOLDS", frozen=True)
-    engine: str = Field(default="TLC")
+    status: Literal["PROPERTY_HOLDS"] = "PROPERTY_HOLDS"
+    engine: Literal["TLC"] = "TLC"
     statistics: Statistics
 
 
@@ -39,6 +39,6 @@ class ValidationErrorItem(BaseModel):
 
 
 class ModelInvalid(BaseModel):
-    status: str = Field(default="MODEL_INVALID", frozen=True)
-    engine: str = Field(default="TLC")
+    status: Literal["MODEL_INVALID"] = "MODEL_INVALID"
+    engine: Literal["TLC"] = "TLC"
     errors: list[ValidationErrorItem]
