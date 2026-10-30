@@ -3,7 +3,7 @@ from concurrent.futures import ThreadPoolExecutor
 from uuid import uuid4
 
 import pytest
-from test_generator import FakeLlm, completion
+from test_generator import FakeLlm, completion, response
 from test_storage import verified
 
 from pipeline_generator.errors import PipelineError
@@ -144,3 +144,49 @@ def test_failed_artifact_insert_rolls_back_success_manifest(repository):
             "SELECT content::jsonb AS value FROM artifacts WHERE id=%s", (request,)
         ).fetchone()["value"]
         assert manifest["state"] != "GENERATED"
+
+
+@pytest.mark.parametrize(
+    "bad_output",
+    [
+        chr(0xD800),
+        response(content=chr(0xD800)),
+        response(notes=[chr(0xD800)]),
+        "[" * 20000 + "0" + "]" * 20000,
+    ],
+)
+def test_malformed_unicode_or_deep_json_fails_request_instead_of_leaving_running(
+    repository, bad_output
+):
+    _, spec, _ = verified(repository)
+    client = FakeLlm(completion(bad_output))
+    service = GenerationService(repository, PySparkGenerator(client))
+    request = uuid4()
+    for _ in range(2):
+        with pytest.raises(PipelineError) as error:
+            service.generate(spec, request)
+        assert error.value.code == "LLM_INVALID_RESPONSE"
+    assert len(client.calls) == 1
+    with repository.connect() as connection:
+        row = connection.execute(
+            "SELECT content::jsonb AS value FROM artifacts WHERE id=%s", (request,)
+        ).fetchone()
+        assert row["value"]["state"] == "FAILED"
+
+
+def test_abandoned_expired_request_requires_explicit_new_key(repository):
+    _, spec, _ = verified(repository)
+    client = FakeLlm(completion())
+    service = GenerationService(repository, PySparkGenerator(client))
+    request = uuid4()
+    service.issuance.reserve(repository.load_verified_context(spec), request)
+    with repository.connect() as connection:
+        connection.execute(
+            "UPDATE artifacts SET content=jsonb_set(content::jsonb, '{expires_at}', to_jsonb('2000-01-01T00:00:00+00:00'::text))::text WHERE id=%s",
+            (request,),
+        )
+    with pytest.raises(PipelineError) as error:
+        service.generate(spec, request)
+    assert error.value.code == "GENERATION_EXPIRED"
+    assert client.calls == []
+    assert service.generate(spec, uuid4()).spec_id == spec

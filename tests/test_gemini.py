@@ -113,3 +113,39 @@ def test_timeout_is_retryable_without_disclosing_request():
             )
     assert error.value.code == "LLM_TIMEOUT"
     assert error.value.retryable
+
+
+def test_region_precondition_is_access_error_not_an_invalid_key():
+    payload = {
+        "error": {
+            "status": "FAILED_PRECONDITION",
+            "message": "User location is not supported for the API use.",
+        }
+    }
+    with httpx.Client(
+        transport=httpx.MockTransport(lambda request: httpx.Response(400, json=payload))
+    ) as http:
+        with pytest.raises(PipelineError) as error:
+            GeminiClient(api_key="test", model="gemini-3.1-flash-lite", http=http).complete(
+                "s", "u", {}
+            )
+    assert error.value.code == "LLM_ACCESS_ERROR"
+    assert not error.value.retryable
+    assert "регион" in error.value.message
+
+
+def test_explicit_env_file_loads_key_without_overriding_process_environment(tmp_path, monkeypatch):
+    config = tmp_path / ".env"
+    config.write_text(
+        'GEMINI_API_KEY="test-file-key"\nGEMINI_MODEL=gemini-3.1-flash-lite\nLLM_MAX_OUTPUT_TOKENS=1024\n'
+    )
+    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+    monkeypatch.delenv("LLM_MAX_OUTPUT_TOKENS", raising=False)
+    monkeypatch.setenv("GEMINI_MODEL", "gemini-3.5-flash-lite")
+    client = GeminiClient.from_environment(env_file=config)
+    try:
+        assert client.model == "gemini-3.5-flash-lite"
+        assert client.max_output_tokens == 1024
+        assert "test-file-key" not in repr(client)
+    finally:
+        client.close()

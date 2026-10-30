@@ -7,7 +7,7 @@ name = "pipeline-generator"
 version = "0.1.0"
 description = "Version-bound LLM PySpark generation and PostgreSQL storage"
 requires-python = ">=3.12"
-dependencies = ["pydantic>=2.10,<3", "psycopg[binary]>=3.2,<4", "httpx>=0.28,<1"]
+dependencies = ["pydantic>=2.10,<3", "psycopg[binary]>=3.2,<4", "httpx>=0.28,<1", "python-dotenv>=1.0,<2"]
 
 [project.optional-dependencies]
 dev = ["pytest>=8,<10", "ruff>=0.9,<1"]

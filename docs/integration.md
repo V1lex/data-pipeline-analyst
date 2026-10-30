@@ -10,7 +10,7 @@ cp .env.example .env
 # Заполните конфигурацию локально и экспортируйте переменные в окружение процесса.
 ```
 
-`.env` автоматически не исполняется и не загружается. Backend может использовать свой существующий загрузчик конфигурации. Ключ Gemini не передаётся в контексте модели и не сохраняется в PostgreSQL. `DATABASE_SCHEMA` по умолчанию — `public`; для новой отдельной схемы её заранее создаёт владелец БД. Миграция предназначена для пустой согласованной схемы, запускать её один раз:
+Backend может использовать свой существующий загрузчик конфигурации. `GeminiClient.from_environment(env_file=".env")` явно читает локальный файл, не исполняя его; переменные процесса имеют приоритет. Без `env_file` читается только окружение процесса. Ключ Gemini не передаётся в контексте модели и не сохраняется в PostgreSQL. `DATABASE_SCHEMA` по умолчанию — `public`; для новой отдельной схемы её заранее создаёт владелец БД. Миграция предназначена для пустой согласованной схемы, запускать её один раз:
 
 ```python
 import os
@@ -63,7 +63,7 @@ from pipeline_generator.gemini import GeminiClient
 from pipeline_generator.generator import PySparkGenerator
 from pipeline_generator.service import GenerationService
 
-client = GeminiClient.from_environment()
+client = GeminiClient.from_environment(env_file=".env")
 try:
     service = GenerationService(repository, PySparkGenerator(client))
     # Backend сначала проверяет право текущего пользователя на проект/spec_id.

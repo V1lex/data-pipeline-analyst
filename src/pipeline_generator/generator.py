@@ -50,12 +50,14 @@ class PySparkGenerator:
             )
         if completion.finish_reason != "STOP":
             raise PipelineError("LLM_BLOCKED", "Модель не завершила допустимый ответ.")
-        if len(completion.text.encode("utf-8")) > MAX_RESPONSE_BYTES:
-            raise PipelineError("LLM_INVALID_RESPONSE", "Ответ превышает допустимый размер.")
         try:
+            if len(completion.text.encode("utf-8")) > MAX_RESPONSE_BYTES:
+                raise PipelineError("LLM_INVALID_RESPONSE", "Ответ превышает допустимый размер.")
             raw = json.loads(completion.text, object_pairs_hook=_unique_keys)
             payload = ModelPayload.model_validate(raw)
-        except (ValueError, ValidationError, TypeError):
+            # JSON permits escaped lone surrogates; PostgreSQL/text files require valid UTF-8.
+            json.dumps(payload.model_dump(), ensure_ascii=False).encode("utf-8")
+        except (ValueError, ValidationError, TypeError, RecursionError):
             raise PipelineError(
                 "LLM_INVALID_RESPONSE", "Модель вернула некорректный JSON-ответ."
             ) from None

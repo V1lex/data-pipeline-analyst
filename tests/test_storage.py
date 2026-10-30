@@ -1,5 +1,11 @@
 """Real PostgreSQL tests: no SQLite or fake persistence."""
 
+import json
+import os
+import subprocess
+import sys
+from pathlib import Path
+
 import pytest
 from psycopg import errors
 from test_generator import context
@@ -150,3 +156,28 @@ def test_finished_verification_cannot_be_rewritten(repository):
     with pytest.raises(PipelineError) as error:
         repository.finish_verification(run, {"status": "TIMEOUT", "engine": "TLC"})
     assert error.value.code == "REQUEST_CONFLICT"
+
+
+def test_verified_snapshot_is_available_to_a_fresh_python_process(repository):
+    _, spec, _ = verified(repository)
+    script = """
+import os
+from uuid import UUID
+from pipeline_generator.storage import PostgresRepository
+repo = PostgresRepository(os.environ['TEST_DATABASE_URL'], schema=os.environ['TEST_SCHEMA'])
+print(repo.load_verified_context(UUID(os.environ['TEST_SPEC_ID'])).model_dump_json())
+"""
+    environment = dict(
+        os.environ,
+        TEST_DATABASE_URL=repository.dsn,
+        TEST_SCHEMA=repository.schema,
+        TEST_SPEC_ID=str(spec),
+    )
+    environment["PYTHONPATH"] = str(Path(__file__).resolve().parents[1] / "src")
+    completed = subprocess.run(
+        [sys.executable, "-c", script], env=environment, capture_output=True, text=True, check=True
+    )
+    saved = json.loads(completed.stdout)
+    assert saved["spec_id"] == str(spec)
+    assert saved["spec_version"] == 1
+    assert saved["messages"][0]["content"] == "Use mean, not sum."

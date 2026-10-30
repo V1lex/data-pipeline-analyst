@@ -70,7 +70,7 @@ JSON проверяется строго: неизвестные поля, не�
 
 ## Ошибки
 
-`PipelineError` содержит безопасные `code`, `message`, `retryable`, `details`. Основные коды: `NOT_FOUND`, `VERIFICATION_REQUIRED`, `CONTEXT_REQUIRED`, `NEEDS_CLARIFICATION`, `CONFIGURATION_ERROR`, `LLM_AUTH_ERROR`, `LLM_TRANSIENT_ERROR`, `LLM_TIMEOUT`, `LLM_BLOCKED`, `LLM_TRUNCATED`, `LLM_INVALID_RESPONSE`, `EMPTY_CODE`, `REQUEST_CONFLICT`, `GENERATION_IN_PROGRESS`, `GENERATION_EXPIRED`, `STORAGE_ERROR`.
+`PipelineError` содержит безопасные `code`, `message`, `retryable`, `details`. Основные коды: `NOT_FOUND`, `VERIFICATION_REQUIRED`, `CONTEXT_REQUIRED`, `NEEDS_CLARIFICATION`, `CONFIGURATION_ERROR`, `LLM_AUTH_ERROR`, `LLM_ACCESS_ERROR`, `LLM_TRANSIENT_ERROR`, `LLM_TIMEOUT`, `LLM_BLOCKED`, `LLM_TRUNCATED`, `LLM_INVALID_RESPONSE`, `EMPTY_CODE`, `REQUEST_CONFLICT`, `GENERATION_IN_PROGRESS`, `GENERATION_EXPIRED`, `STORAGE_ERROR`.
 
 Временные сетевые/429/5xx ошибки можно повторить ограниченно; конфигурация, авторизация, неверный формат и нехватка требований не повторяются. Ключи, DSN и полный HTTP-ответ не включаются в диагностику.
 

@@ -2,9 +2,11 @@
 
 import os
 import re
+from pathlib import Path
 from typing import Any
 
 import httpx
+from dotenv import dotenv_values
 
 from .errors import PipelineError
 from .models import Completion
@@ -37,13 +39,15 @@ class GeminiClient:
         self._http = http if http is not None else httpx.Client()
 
     @classmethod
-    def from_environment(cls):
+    def from_environment(cls, *, env_file: str | Path | None = None):
+        settings = dict(dotenv_values(env_file, interpolate=False)) if env_file is not None else {}
+        settings.update(os.environ)
         try:
             return cls(
-                api_key=os.getenv("GEMINI_API_KEY", ""),
-                model=os.getenv("GEMINI_MODEL", ""),
-                timeout_seconds=float(os.getenv("LLM_TIMEOUT_SECONDS", "60")),
-                max_output_tokens=int(os.getenv("LLM_MAX_OUTPUT_TOKENS", "8192")),
+                api_key=settings.get("GEMINI_API_KEY") or "",
+                model=settings.get("GEMINI_MODEL") or "",
+                timeout_seconds=float(settings.get("LLM_TIMEOUT_SECONDS") or "60"),
+                max_output_tokens=int(settings.get("LLM_MAX_OUTPUT_TOKENS") or "8192"),
             )
         except ValueError:
             raise PipelineError(
@@ -92,6 +96,20 @@ class GeminiClient:
                 retryable=True,
             )
         if response.status_code != 200:
+            if response.status_code == 400:
+                try:
+                    diagnostic = response.json().get("error", {})
+                    region_denied = (
+                        diagnostic.get("status") == "FAILED_PRECONDITION"
+                        and "location is not supported" in diagnostic.get("message", "").lower()
+                    )
+                except (ValueError, TypeError, AttributeError):
+                    region_denied = False
+                if region_denied:
+                    raise PipelineError(
+                        "LLM_ACCESS_ERROR",
+                        "Gemini недоступен из текущего региона выполнения запроса.",
+                    )
             raise PipelineError(
                 "CONFIGURATION_ERROR", "Gemini отклонил запрос: проверьте модель и настройки."
             )
