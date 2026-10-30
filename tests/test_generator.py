@@ -1,6 +1,7 @@
 """Catches gate bypasses, lost version context and invalid model output acceptance."""
 
 import json
+import traceback
 from uuid import UUID
 
 import pytest
@@ -179,3 +180,23 @@ def test_auth_and_invalid_output_are_not_retried():
         PySparkGenerator(client, max_attempts=2, retry_delay=0).generate(context())
     assert error.value.code == "LLM_AUTH_ERROR"
     assert len(client.calls) == 1
+
+
+def test_validation_diagnostic_does_not_echo_model_response():
+    marker = "FAKE_SECRET_NEVER_LOG"
+    generator = PySparkGenerator(FakeLlm(completion(response(unexpected=marker))))
+    with pytest.raises(PipelineError) as error:
+        generator.generate(context())
+    assert marker not in "".join(traceback.format_exception(error.value))
+
+
+def test_exhausted_transient_retries_stop_before_third_call():
+    client = FakeLlm(
+        PipelineError("LLM_TRANSIENT_ERROR", "Temporary", retryable=True),
+        PipelineError("LLM_TRANSIENT_ERROR", "Temporary", retryable=True),
+        completion(),
+    )
+    with pytest.raises(PipelineError) as error:
+        PySparkGenerator(client, max_attempts=2, retry_delay=0).generate(context())
+    assert error.value.code == "LLM_TRANSIENT_ERROR"
+    assert len(client.calls) == 2

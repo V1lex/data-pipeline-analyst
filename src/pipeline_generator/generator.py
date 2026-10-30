@@ -55,10 +55,10 @@ class PySparkGenerator:
         try:
             raw = json.loads(completion.text, object_pairs_hook=_unique_keys)
             payload = ModelPayload.model_validate(raw)
-        except (ValueError, ValidationError, TypeError) as error:
+        except (ValueError, ValidationError, TypeError):
             raise PipelineError(
                 "LLM_INVALID_RESPONSE", "Модель вернула некорректный JSON-ответ."
-            ) from error
+            ) from None
         if payload.status == "NEEDS_CLARIFICATION":
             if not payload.questions or any(not question.strip() for question in payload.questions):
                 raise PipelineError(
