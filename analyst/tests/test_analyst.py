@@ -43,7 +43,7 @@ def test_dialogue_history_tracking():
     assert session.history[1].role == Role.MODEL
     assert len(session.history[1].content) > 0
 
-    session.send_message("Данные в таблице orders, поля city и amount, выручка = sum(amount), статус = COMPLETED")
+    session.send_message("Да, подтверждаю. Данные в таблице orders, поля city и amount, выручка = sum(amount), статус = COMPLETED")
     assert len(session.history) == 4
     assert session.last_response is not None
     assert session.last_response.is_complete is True

@@ -8,6 +8,8 @@ from typing import Any
 from google import genai
 from google.genai import types
 
+from tenacity import retry, stop_after_attempt, wait_exponential
+
 from analyst.config import DEFAULT_MODEL, DEFAULT_TEMPERATURE, GEMINI_API_KEY
 from analyst.models import (
     AnalystResponse,
@@ -45,6 +47,11 @@ class GeminiLLMClient(BaseLLMClient):
         self.model_name = model_name
         self.temperature = temperature
 
+    @retry(
+        wait=wait_exponential(multiplier=1, min=2, max=10),
+        stop=stop_after_attempt(3),
+        reraise=True,
+    )
     def generate_response(
         self,
         messages: list[ChatMessage],
