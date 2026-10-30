@@ -25,6 +25,8 @@ def _unique_keys(pairs):
 
 
 class PySparkGenerator:
+    """Calls an injected LLM; forwards its human answer and code without operation templates."""
+
     def __init__(self, client: LlmClient, *, max_attempts: int = 2, retry_delay: float = 1.0):
         if not 1 <= max_attempts <= 3 or not 0 <= retry_delay <= 30:
             raise ValueError("Use 1–3 attempts and a retry delay between 0 and 30 seconds")
@@ -61,6 +63,8 @@ class PySparkGenerator:
             raise PipelineError(
                 "LLM_INVALID_RESPONSE", "Модель вернула некорректный JSON-ответ."
             ) from None
+        if not payload.answer.strip():
+            raise PipelineError("LLM_INVALID_RESPONSE", "Модель не вернула текстовый ответ.")
         if payload.status == "NEEDS_CLARIFICATION":
             if not payload.questions or any(not question.strip() for question in payload.questions):
                 raise PipelineError(
@@ -69,7 +73,7 @@ class PySparkGenerator:
             raise PipelineError(
                 "NEEDS_CLARIFICATION",
                 "Требования нужно уточнить.",
-                details={"questions": payload.questions},
+                details={"answer": payload.answer, "questions": payload.questions},
             )
         if not payload.content.strip():
             raise PipelineError("EMPTY_CODE", "Модель не вернула код.")
@@ -81,6 +85,7 @@ class PySparkGenerator:
                 "LLM_INVALID_RESPONSE", "Некорректное имя файла или неоднозначный ответ."
             )
         return GeneratedCode(
+            answer=payload.answer,
             filename=payload.filename,
             content=payload.content,
             requirements=payload.requirements,

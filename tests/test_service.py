@@ -22,6 +22,14 @@ def test_retry_returns_same_persisted_file_and_regeneration_keeps_both(repositor
     again = service.generate(spec, request)
     regenerated = service.generate(spec, uuid4())
     assert first == again
+    assert first.answer == "Скрипт считает среднюю температуру по датчикам и сохраняет Parquet."
+    assert again.answer == first.answer
+    with repository.connect() as connection:
+        manifest = connection.execute(
+            "SELECT content::jsonb AS value FROM artifacts WHERE id=%s", (request,)
+        ).fetchone()["value"]
+        assert manifest["result"]["answer"] == first.answer
+    assert "Скрипт считает" not in repository.get_artifact(spec, first.artifact_id).content
     assert regenerated.artifact_id != first.artifact_id
     assert regenerated.filename != first.filename
     assert len(client.calls) == 2
@@ -49,6 +57,24 @@ def test_failed_model_call_does_not_change_verification_or_store_code(repository
             ).fetchone()["n"]
             == 0
         )
+
+
+def test_legacy_cached_file_without_answer_is_read_without_regeneration(repository):
+    _, spec, _ = verified(repository)
+    client = FakeLlm(completion())
+    service = GenerationService(repository, PySparkGenerator(client))
+    request = uuid4()
+    first = service.generate(spec, request)
+    with repository.connect() as connection:
+        connection.execute(
+            "UPDATE artifacts SET content=(content::jsonb #- '{result,answer}')::text WHERE id=%s",
+            (request,),
+        )
+    cached = service.generate(spec, request)
+    assert cached.answer == ""
+    assert cached.artifact_id == first.artifact_id
+    assert cached.content == first.content
+    assert len(client.calls) == 1
 
 
 def test_concurrent_same_request_has_one_call_and_no_open_transaction(repository):
@@ -152,6 +178,7 @@ def test_failed_artifact_insert_rolls_back_success_manifest(repository):
         chr(0xD800),
         response(content=chr(0xD800)),
         response(notes=[chr(0xD800)]),
+        response(answer=chr(0xD800)),
         "[" * 20000 + "0" + "]" * 20000,
     ],
 )

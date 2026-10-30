@@ -47,6 +47,7 @@ def main():
             json.dumps(
                 {
                     "status": "GENERATED",
+                    "answer": result.answer,
                     "filename": str(target),
                     "verification_fixture": True,
                     "executed": False,

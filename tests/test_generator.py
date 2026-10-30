@@ -40,6 +40,7 @@ def context(**updates):
 def response(**updates):
     data = {
         "status": "GENERATED",
+        "answer": "Скрипт считает среднюю температуру по датчикам и сохраняет Parquet.",
         "filename": "sensor_mean.py",
         "content": "from pyspark.sql import SparkSession\n",
         "requirements": ["pyspark==3.5.8"],
@@ -76,6 +77,7 @@ def test_success_retains_exact_context_and_disclaimer():
     client = FakeLlm(completion())
     result = PySparkGenerator(client).generate(context())
     assert result.filename == "sensor_mean.py"
+    assert result.answer == "Скрипт считает среднюю температуру по датчикам и сохраняет Parquet."
     assert result.code_validation == "not_performed"
     assert result.provider == "fake"
     assert any("не проверялась" in note for note in result.notes)
@@ -137,6 +139,7 @@ def test_incomplete_or_untrusted_context_is_rejected(updates):
         (response(filename="evil\r\n.py"), "STOP", "LLM_INVALID_RESPONSE"),
         (response(content="x", requirements="pyspark"), "STOP", "LLM_INVALID_RESPONSE"),
         (response(unexpected="extra"), "STOP", "LLM_INVALID_RESPONSE"),
+        (response(answer=" \n"), "STOP", "LLM_INVALID_RESPONSE"),
     ],
 )
 def test_invalid_responses_never_become_ready_code(text, finish, code):
@@ -152,6 +155,7 @@ def test_clarification_is_returned_without_inventing_code():
                 completion(
                     response(
                         status="NEEDS_CLARIFICATION",
+                        answer="Уточните, как обработать пустые значения.",
                         filename="",
                         content="",
                         questions=["Which null policy?"],
@@ -160,7 +164,22 @@ def test_clarification_is_returned_without_inventing_code():
             )
         ).generate(context())
     assert error.value.code == "NEEDS_CLARIFICATION"
-    assert error.value.details == {"questions": ["Which null policy?"]}
+    assert error.value.details == {
+        "answer": "Уточните, как обработать пустые значения.",
+        "questions": ["Which null policy?"],
+    }
+
+
+def test_text_and_code_are_both_forwarded_from_llm_without_rewriting():
+    answer = (
+        "Данные отфильтрованы, затем посчитано среднее. Запустите скрипт с путями CSV и Parquet."
+    )
+    code = "# Arbitrary model-authored PySpark, no operation templates\nfrom pyspark.sql import functions as F\n"
+    generated = PySparkGenerator(
+        FakeLlm(completion(response(answer=answer, content=code)))
+    ).generate(context())
+    assert generated.answer == answer
+    assert generated.content == code
 
 
 def test_transient_errors_are_bounded_and_can_recover():

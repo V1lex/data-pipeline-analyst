@@ -5,6 +5,8 @@ AI analyst that turns natural language requirements into data pipeline specifica
 
 В этой ветке реализована часть Дмитрия: PostgreSQL-хранилище, LLM-генератор, заменяемый клиент Gemini и сервис сохранения/выдачи файлов конкретной проверенной версии. Диалоговый аналитик и формальный движок остаются отдельными модулями команды.
 
+Генератор здесь — обвязка вызова LLM: модель получает контекст и возвращает обычный текст `answer` вместе с полным PySpark-кодом `content`. Обвязка проверяет формат, сохраняет и выдаёт их. Ручные скрипты в examples — только тестовые образцы.
+
 - [Контракт генератора](docs/generator_contract.md)
 - [Подключение к backend/worker](docs/integration.md)
 - [Инструкция модели](src/pipeline_generator/generation_prompt.md)

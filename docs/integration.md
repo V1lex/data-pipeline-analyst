@@ -69,6 +69,7 @@ try:
     # Backend сначала проверяет право текущего пользователя на проект/spec_id.
     result = service.generate(spec_id, request_id=UUID(request_id_from_backend))
     api_body = result.model_dump(mode="json")
+    # UI показывает api_body["answer"] как текст LLM, api_body["content"] — как код.
 finally:
     client.close()
 
@@ -78,6 +79,8 @@ artifact = repository.get_artifact(spec_id, result.artifact_id)
 # Content-Disposition: attachment; filename="<artifact.filename>"
 download_bytes = artifact.content.encode("utf-8")
 ```
+
+И текст `answer`, и код `content` создаются LLM. `PySparkGenerator` — обвязка вызова: передаёт контекст, разбирает ответ и не собирает PySpark из шаблонов. Текст не добавляется в скачиваемый `.py`.
 
 `request_id` создаётся backend один раз на пользовательское действие и повторно используется при сетевом повторе. Новый UUID — явная новая генерация. Имена выданных файлов включают UUID: существующие результаты не затираются. Ошибки доступны как `PipelineError.to_dict()` и не меняют результат TLC.
 

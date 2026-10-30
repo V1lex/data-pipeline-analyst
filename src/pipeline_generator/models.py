@@ -53,6 +53,7 @@ class Completion(BaseModel):
 class ModelPayload(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True)
     status: Literal["GENERATED", "NEEDS_CLARIFICATION"]
+    answer: str
     filename: str
     content: str
     requirements: list[str]
@@ -62,6 +63,8 @@ class ModelPayload(BaseModel):
 
 class GeneratedCode(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
+    # Old saved manifests predate the explanation field; do not invent a model reply for them.
+    answer: str = ""
     filename: str
     content: str
     requirements: list[str]
