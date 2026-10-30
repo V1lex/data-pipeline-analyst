@@ -55,7 +55,7 @@ def test_dialogue_history_tracking():
 
 @pytest.mark.skipif(not GEMINI_API_KEY, reason="GEMINI_API_KEY is not configured")
 def test_live_gemini_clarification_on_vague_query():
-    """Live integration test against Gemini API (gemini-2.5-flash)."""
+    """Live integration test against Gemini API (gemini-3.5-flash-lite)."""
     client = GeminiLLMClient(api_key=GEMINI_API_KEY)
     session = AnalystSession(llm_client=client)
 

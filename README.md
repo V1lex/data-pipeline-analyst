@@ -12,7 +12,7 @@
                                             ▼
            ┌─────────────────────────────────────────────────────────────────┐
            │                     МОДУЛЬ АНАЛИТИКА (analyst/)                 │
-           │  1. Gemini 3.5 Flash ведет контекстный диалог (Т12)             │
+           │  1. Gemini 3.5 Flash-Lite ведет контекстный диалог (Т12)        │
            │  2. CompletenessChecker блокирует додумывание параметров (Т13)  │
            │  3. SpecificationBuilder собирает и самокорректирует JSON (Т14) │
            └────────────────────────────────┬────────────────────────────────┘
@@ -56,7 +56,7 @@
 * Эталонная спецификация: `pipeline_spec/examples/e_commerce_orders_pipeline.json` и документация контракта в `pipeline_spec/docs/pipeline_specification_contract.md`.
 
 ### [Т12] Интеграция с Gemini API, системные промпты и сессионный контекст (`analyst/`)
-* Подключение к Google Gemini API (модель `gemini-3.5-flash`) через официальный SDK `google-genai` со Structured Outputs.
+* Подключение к Google Gemini API (модель `gemini-3.5-flash-lite`) через официальный SDK `google-genai` со Structured Outputs.
 * Сессионный менеджер `AnalystSession` сохраняет историю реплик и обогащает контекст диалога.
 * Системная инструкция запрещает агенту молча додумывать недостающие бизнес-требования.
 * **Критерий приемки**: на неполный запрос *«Посчитай выручку по городам»* агент задает структурированные вопросы по источникам, полям, формуле и правилам фильтрации.
@@ -90,7 +90,7 @@ data-pipeline-analyst/
 ├── README.md                           # Документация проекта и инструкция по запуску
 ├── analyst/                            # Модуль ИИ-аналитика (Т12–Т15)
 │   ├── cli.py                          # Интерактивный диалоговый CLI-интерфейс
-│   ├── config.py                       # Конфигурация модели (gemini-3.5-flash) и API-ключей
+│   ├── config.py                       # Конфигурация модели (gemini-3.5-flash-lite) и API-ключей
 │   ├── formal_feedback.py              # Интерпретатор TLC и версионирование SemVer (Т15)
 │   ├── llm_client.py                   # Клиенты Gemini API и Mock с retry-логикой
 │   ├── models.py                       # Pydantic-модели диалога и структуры ответов
@@ -130,7 +130,7 @@ source .venv/bin/activate
 Создайте файл `.env` в корне репозитория (он добавлен в `.gitignore`):
 ```ini
 GEMINI_API_KEY=ваш_ключ_google_ai_studio
-GEMINI_MODEL=gemini-3.5-flash
+GEMINI_MODEL=gemini-3.5-flash-lite
 ```
 
 ### 1. Интерактивный диалог с аналитиком (CLI)
