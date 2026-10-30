@@ -2,6 +2,12 @@
 """Interactive CLI dialogue with Data Pipeline Analyst with Completeness Verification."""
 
 import sys
+from pathlib import Path
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
 from analyst.completeness import ParameterOrigin, AgreementStatus
 from analyst.session import AnalystSession
 
@@ -13,7 +19,12 @@ def main() -> None:
     print("Введите ваш запрос по пайплайну данных (или 'exit' для выхода, 'reset' для сброса):")
     print("=" * 75)
 
-    session = AnalystSession()
+    try:
+        session = AnalystSession()
+    except Exception as e:
+        print(f"\n[Ошибка инициализации сессии: {e}]")
+        print("Подсказка: задайте GEMINI_API_KEY в .env или запустите с USE_MOCK_CLIENT=true для автономного режима.")
+        return
 
     while True:
         try:

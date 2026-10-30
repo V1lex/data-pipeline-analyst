@@ -5,6 +5,7 @@ from analyst.completeness.models import (
     DraftParameter,
     MissingParameter,
     ParameterOrigin,
+    SessionState,
 )
 from analyst.completeness.rules import OPERATION_RULES, OperationRule, ParameterRequirement
 
@@ -15,6 +16,7 @@ __all__ = [
     "DraftParameter",
     "ParameterOrigin",
     "AgreementStatus",
+    "SessionState",
     "OperationRule",
     "ParameterRequirement",
     "OPERATION_RULES",

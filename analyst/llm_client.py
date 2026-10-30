@@ -2,15 +2,15 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 from abc import ABC, abstractmethod
 from typing import Any
 
 from google import genai
 from google.genai import types
+from tenacity import retry, retry_if_exception, stop_after_attempt, wait_exponential
 
-from tenacity import retry, stop_after_attempt, wait_exponential
-
-from analyst.config import DEFAULT_MODEL, DEFAULT_TEMPERATURE, GEMINI_API_KEY
+from analyst.config import DEFAULT_MODEL, DEFAULT_TEMPERATURE, GEMINI_API_KEY, GEMINI_TIMEOUT, MAX_RETRIES
 from analyst.models import (
     AnalystResponse,
     ChatMessage,
@@ -20,6 +20,35 @@ from analyst.models import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+class LLMTruncatedResponseError(RuntimeError):
+    """Raised when model output was truncated (e.g. MAX_TOKENS)."""
+    pass
+
+
+class LLMBlockedResponseError(RuntimeError):
+    """Raised when model output was blocked by safety filters."""
+    pass
+
+
+class LLMEmptyResponseError(RuntimeError):
+    """Raised when model returns empty text."""
+    pass
+
+
+def _is_transient_error(exception: BaseException) -> bool:
+    """Predicate identifying temporary/retryable errors (network, 5xx, rate limits).
+    Non-retryable: auth errors, client errors (400, 401, 403, 404), schema/type errors, truncation, safety blocks (A09).
+    """
+    if isinstance(exception, (ValueError, TypeError, LLMTruncatedResponseError, LLMBlockedResponseError)):
+        return False
+
+    code = getattr(exception, "code", None) or getattr(exception, "status_code", None)
+    if code in (400, 401, 403, 404):
+        return False
+
+    return True
 
 
 class BaseLLMClient(ABC):
@@ -39,17 +68,28 @@ class GeminiLLMClient(BaseLLMClient):
         api_key: str | None = None,
         model_name: str = DEFAULT_MODEL,
         temperature: float = DEFAULT_TEMPERATURE,
+        timeout: float = GEMINI_TIMEOUT,
+        client: genai.Client | None = None,
     ) -> None:
-        key = api_key or GEMINI_API_KEY
-        if not key:
-            raise ValueError("GEMINI_API_KEY is not provided and not found in environment.")
-        self.client = genai.Client(api_key=key)
         self.model_name = model_name
         self.temperature = temperature
+        self.timeout = timeout
+
+        if client is not None:
+            self.client = client
+        else:
+            key = api_key if api_key is not None else os.getenv("GEMINI_API_KEY", "")
+            if not key:
+                raise ValueError("GEMINI_API_KEY is not provided and not found in environment.")
+            self.client = genai.Client(
+                api_key=key,
+                http_options=types.HttpOptions(timeout=int(timeout)),
+            )
 
     @retry(
-        wait=wait_exponential(multiplier=1, min=2, max=10),
-        stop=stop_after_attempt(3),
+        retry=retry_if_exception(_is_transient_error),
+        wait=wait_exponential(multiplier=1, min=2, max=8),
+        stop=stop_after_attempt(MAX_RETRIES),
         reraise=True,
     )
     def generate_response(
@@ -81,8 +121,20 @@ class GeminiLLMClient(BaseLLMClient):
             config=config,
         )
 
+        if not response.candidates:
+            raise RuntimeError("Gemini returned no candidates.")
+
+        candidate = response.candidates[0]
+        finish_reason = getattr(candidate, "finish_reason", None)
+        finish_str = str(finish_reason).upper() if finish_reason else ""
+
+        if "MAX_TOKENS" in finish_str:
+            raise LLMTruncatedResponseError("Gemini response was truncated due to MAX_TOKENS limit.")
+        if "SAFETY" in finish_str:
+            raise LLMBlockedResponseError("Gemini response was blocked by SAFETY filters.")
+
         if not response.text:
-            raise RuntimeError("Gemini returned empty response text.")
+            raise LLMEmptyResponseError("Gemini returned empty response text.")
 
         return AnalystResponse.model_validate_json(response.text)
 

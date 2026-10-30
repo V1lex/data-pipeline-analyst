@@ -72,8 +72,17 @@ class PipelineSpecification(SpecBaseModel):
         step_ids = {s.id for s in self.steps}
         all_available_inputs = source_ids.union(step_ids)
 
-        # Validate step inputs and operations
+        # Validate step inputs, dependencies, operations and self-references
         for step in self.steps:
+            if step.id in step.inputs:
+                raise ValueError(
+                    f"Step '{step.id}' contains a self-reference in 'inputs'."
+                )
+            if step.id in step.depends_on:
+                raise ValueError(
+                    f"Step '{step.id}' contains a self-reference in 'depends_on'."
+                )
+
             for inp in step.inputs:
                 if inp not in all_available_inputs:
                     raise ValueError(
@@ -94,11 +103,19 @@ class PipelineSpecification(SpecBaseModel):
                         f"Read operation in step '{step.id}' references undefined source '{op.source_id}'."
                     )
             elif isinstance(op, JoinOperation):
+                if op.right_input == step.id:
+                    raise ValueError(
+                        f"Join operation in step '{step.id}' contains a self-reference in 'right_input'."
+                    )
                 if op.right_input not in all_available_inputs:
                     raise ValueError(
                         f"Join operation in step '{step.id}' references undefined right input '{op.right_input}'."
                     )
             elif isinstance(op, UnionOperation):
+                if step.id in op.other_inputs:
+                    raise ValueError(
+                        f"Union operation in step '{step.id}' contains a self-reference in 'other_inputs'."
+                    )
                 for other in op.other_inputs:
                     if other not in all_available_inputs:
                         raise ValueError(
@@ -130,32 +147,45 @@ class PipelineSpecification(SpecBaseModel):
 
     def get_topological_order(self) -> list[str]:
         """Returns step IDs in topologically sorted execution order.
+        Unifies inputs, operation references (join right_input, union other_inputs),
+        and explicit depends_on.
         Raises ValueError if a cycle is detected.
         """
         step_ids = {s.id for s in self.steps}
-        in_degree: dict[str, int] = {s.id: 0 for s in self.steps}
-        adjacency: dict[str, list[str]] = defaultdict(list)
+        step_index = {s.id: idx for idx, s in enumerate(self.steps)}
 
+        # Build real dependencies for each step
+        step_deps: dict[str, set[str]] = {}
         for step in self.steps:
-            # We consider dependencies on other steps
-            dependencies = {dep for dep in step.depends_on if dep in step_ids}
-            for dep in dependencies:
-                adjacency[dep].append(step.id)
-                in_degree[step.id] += 1
+            deps = set(step.depends_on).union(step.inputs)
+            if isinstance(step.operation, JoinOperation):
+                deps.add(step.operation.right_input)
+            elif isinstance(step.operation, UnionOperation):
+                deps.update(step.operation.other_inputs)
+            # Only dependencies that are other steps define the step order
+            step_deps[step.id] = {dep for dep in deps if dep in step_ids}
 
-        queue = deque([sid for sid, deg in in_degree.items() if deg == 0])
+        in_degree: dict[str, int] = {s.id: len(step_deps[s.id]) for s in self.steps}
+        adjacency: dict[str, list[str]] = defaultdict(list)
+        for sid, deps in step_deps.items():
+            for dep in deps:
+                adjacency[dep].append(sid)
+
+        # Deterministic queue: preserve original step definition order
+        queue = [s.id for s in self.steps if in_degree[s.id] == 0]
         ordered: list[str] = []
 
         while queue:
-            current = queue.popleft()
+            current = queue.pop(0)
             ordered.append(current)
             for neighbor in adjacency[current]:
                 in_degree[neighbor] -= 1
                 if in_degree[neighbor] == 0:
                     queue.append(neighbor)
+            queue.sort(key=lambda x: step_index[x])
 
         if len(ordered) != len(self.steps):
-            cycle_nodes = [sid for sid, deg in in_degree.items() if deg > 0]
+            cycle_nodes = sorted([sid for sid, deg in in_degree.items() if deg > 0])
             raise ValueError(f"Cyclic dependency detected among steps: {cycle_nodes}")
 
         return ordered

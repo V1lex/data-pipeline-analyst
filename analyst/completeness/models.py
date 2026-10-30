@@ -19,6 +19,13 @@ class AgreementStatus(StrEnum):
     REJECTED = "rejected"  # Отклонено
 
 
+class SessionState(StrEnum):
+    INSUFFICIENT_DATA = "insufficient_data"  # Недостаточно данных для черновика
+    AWAITING_APPROVAL = "awaiting_approval"  # Черновик есть, но есть неподтвержденные предложения
+    DRAFT_COMPLETE = "draft_complete"        # Черновик полностью заполнен и все предложения согласованы
+    SUBMITTED_FOR_VERIFICATION = "submitted_for_verification"  # Передан на верификацию
+
+
 class DraftParameter(BaseModel):
     step_id: str = Field(description="ID шага, к которому относится параметр")
     field_name: str = Field(description="Имя параметра")
@@ -34,6 +41,18 @@ class DraftParameter(BaseModel):
         default=None,
         description="Пояснение смысла параметра",
     )
+    revision: int = Field(
+        default=1,
+        description="Номер редакции предложенного значения",
+    )
+    param_id: str | None = Field(
+        default=None,
+        description="Уникальный идентификатор параметра",
+    )
+
+    def model_post_init(self, __context: Any) -> None:
+        if not self.param_id:
+            self.param_id = f"{self.step_id}:{self.field_name}"
 
 
 class MissingParameter(BaseModel):

@@ -24,13 +24,20 @@ class CompletenessChecker:
         params: dict[str, Any],
     ) -> list[MissingParameter]:
         """Checks whether an individual operation has all required parameters."""
-        missing: list[MissingParameter] = []
         op_type = (
             OperationType(operation_type)
             if isinstance(operation_type, str)
             else operation_type
         )
 
+        if op_type == OperationType.JOIN:
+            return self._check_join_op(step_id, step_name, params)
+        if op_type == OperationType.WITH_COLUMNS:
+            return self._check_with_columns_op(step_id, step_name, params)
+        if op_type == OperationType.AGGREGATE:
+            return self._check_aggregate_op(step_id, step_name, params)
+
+        missing: list[MissingParameter] = []
         rule = OPERATION_RULES.get(op_type)
         if not rule:
             return missing
@@ -74,15 +81,14 @@ class CompletenessChecker:
                 confirmed_parameters.append(param)
 
         if not draft:
-            is_complete = len(pending_suggestions) == 0
             return CompletenessReport(
-                is_complete=is_complete,
+                is_complete=False,
                 missing_parameters=[],
                 pending_suggestions=pending_suggestions,
                 confirmed_parameters=confirmed_parameters,
                 summary_message="Черновик спецификации еще не сформирован."
-                if is_complete
-                else f"Ожидают согласования предложений аналитика: {len(pending_suggestions)}.",
+                if not pending_suggestions
+                else f"Черновик не сформирован, ожидают согласования предложений аналитика: {len(pending_suggestions)}.",
             )
 
         # 1. Sources check
@@ -149,7 +155,7 @@ class CompletenessChecker:
         has_write_op = any(
             self._get_op_type(s) == OperationType.WRITE for s in steps
         )
-        if not sinks and not has_write_op:
+        if not sinks:
             missing_params.append(
                 MissingParameter(
                     step_id="global_sinks",
@@ -160,6 +166,33 @@ class CompletenessChecker:
                     suggestion="Добавить целевую витрину 'daily_mart_sink' в формате Parquet в режиме overwrite",
                 )
             )
+        else:
+            for idx, sink in enumerate(sinks, start=1):
+                sink_id = sink.get("id", f"sink_{idx}")
+                sink_name = sink.get("name", sink_id)
+                if self._is_empty(sink.get("location")):
+                    missing_params.append(
+                        MissingParameter(
+                            step_id=sink_id,
+                            step_name=sink_name,
+                            operation_type=OperationType.WRITE,
+                            field_name="location",
+                            question=f"Для целевой витрины '{sink_name}' не указан путь размещения данных (location).",
+                            suggestion="s3://lake/gold/orders_mart/",
+                        )
+                    )
+                # Check save_mode: must not be hallucinated without confirmation (A04)
+                if self._is_empty(sink.get("save_mode")):
+                    missing_params.append(
+                        MissingParameter(
+                            step_id=sink_id,
+                            step_name=sink_name,
+                            operation_type=OperationType.WRITE,
+                            field_name="save_mode",
+                            question=f"Для целевой витрины '{sink_name}' не указан режим сохранения (save_mode: overwrite, append).",
+                            suggestion="overwrite",
+                        )
+                    )
 
         # 4. Determine overall completeness
         is_complete = len(missing_params) == 0 and len(pending_suggestions) == 0
@@ -272,7 +305,8 @@ class CompletenessChecker:
         self, step_id: str, step_name: str, op: dict[str, Any]
     ) -> list[MissingParameter]:
         missing: list[MissingParameter] = []
-        if self._is_empty(op.get("group_by")):
+        is_global = op.get("is_global") is True or op.get("global_aggregation") is True
+        if not is_global and self._is_empty(op.get("group_by")):
             missing.append(
                 MissingParameter(
                     step_id=step_id,

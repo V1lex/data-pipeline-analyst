@@ -53,7 +53,13 @@ def test_dialogue_history_tracking():
     assert session.last_response is None
 
 
-@pytest.mark.skipif(not GEMINI_API_KEY, reason="GEMINI_API_KEY is not configured")
+RUN_LIVE_TESTS = os.getenv("RUN_LIVE_TESTS", "false").lower() in ("true", "1", "yes")
+
+
+@pytest.mark.skipif(
+    not RUN_LIVE_TESTS or not GEMINI_API_KEY,
+    reason="Live Gemini tests require explicit RUN_LIVE_TESTS=true and valid GEMINI_API_KEY",
+)
 def test_live_gemini_clarification_on_vague_query():
     """Live integration test against Gemini API (gemini-3.5-flash-lite)."""
     client = GeminiLLMClient(api_key=GEMINI_API_KEY)
