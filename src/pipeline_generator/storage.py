@@ -8,10 +8,11 @@ from uuid import UUID, uuid4
 import psycopg
 from psycopg.rows import dict_row
 from psycopg.types.json import Jsonb
-from pydantic import ValidationError
+from pydantic import BaseModel, ValidationError
 
 from .errors import PipelineError
 from .models import CHECK_STATUSES, Artifact, VerifiedContext, ensure_verified
+from .team_contracts import json_object, specification_snapshot
 
 
 def _found(row):
@@ -64,6 +65,7 @@ class PostgresRepository:
             )
 
     def add_message(self, project_id: UUID, role: str, content: str) -> UUID:
+        role = "assistant" if role == "model" else role
         if role not in {"user", "assistant", "system"} or not content.strip():
             raise PipelineError("CONTEXT_REQUIRED", "Укажите роль и непустой текст сообщения.")
         message = uuid4()
@@ -86,13 +88,14 @@ class PostgresRepository:
     def create_specification(
         self,
         project_id: UUID,
-        model: dict[str, Any],
+        model: dict[str, Any] | BaseModel,
         approved_requirements: str,
         message_ids: list[UUID],
         target_environment: dict[str, Any],
     ) -> UUID:
         if not approved_requirements.strip() or len(set(message_ids)) != len(message_ids):
             raise PipelineError("CONTEXT_REQUIRED", "Нужны требования и уникальные UUID сообщений.")
+        model, pipeline_specification = specification_snapshot(model)
         spec = uuid4()
         with self.connect() as connection:
             # Serializes version allocation only, not an external operation.
@@ -114,6 +117,8 @@ class PostgresRepository:
                 "messages": [{**item, "id": str(item["id"])} for item in messages],
                 "target_environment": target_environment,
             }
+            if pipeline_specification is not None:
+                snapshot["pipeline_specification"] = pipeline_specification
             version = connection.execute(
                 "SELECT COALESCE(MAX(version),0)+1 AS version FROM specifications WHERE project_id=%s",
                 (project_id,),
@@ -169,8 +174,9 @@ class PostgresRepository:
             ) UPDATE verification_runs r SET status='RUNNING' FROM next
               WHERE r.id=next.id RETURNING r.*""").fetchone()
 
-    def finish_verification(self, run_id: UUID, result: dict[str, Any]) -> None:
+    def finish_verification(self, run_id: UUID, result: dict[str, Any] | BaseModel | str) -> None:
         """Worker-only API: caller must supply the actual normalized checker response."""
+        result = json_object(result, code="INVALID_VERIFICATION_RESULT")
         if result.get("status") not in CHECK_STATUSES:
             raise PipelineError("INVALID_VERIFICATION_RESULT", "Неизвестный общий статус проверки.")
         with self.connect() as connection:

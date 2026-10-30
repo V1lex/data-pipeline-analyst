@@ -18,10 +18,11 @@ Backend после своей авторизации вызывает `Generatio
 - `context_json.approved_requirements` — согласованная постановка с данными и формулами;
 - `context_json.messages` — снимок выбранных сообщений этого проекта с их UUID, ролями и содержимым;
 - `context_json.target_environment` — версия PySpark и дополнительные зависимости.
+- `context_json.pipeline_specification` — необязательный полный снимок валидированного `PipelineSpecification` аналитика. Сохраняет значимые `null`, схемы, формулы и операции; формальная часть преобразуется штатным методом команды в `spec_json`.
 
 Backend передаёт список UUID сообщений, которые соответствуют этой постановке; произвольная последняя переписка не подмешивается. Более поздние сообщения не меняют снимок. Модель, снимок и номер версии неизменяемы на уровне БД. Новые требования создают новую версию.
 
-Сервис формирует `VerifiedContext`: `spec_id`, `spec_version`, `verification_run_id`, `approved_requirements`, `messages`, `behavioral_model`, `verification_result`, `target_environment`. SHA-256 канонического JSON связывает попытку и файл с конкретным контекстом. Хеш — контроль соответствия, не электронная подпись и не замена доверенному worker.
+Сервис формирует `VerifiedContext`: `spec_id`, `spec_version`, `verification_run_id`, `approved_requirements`, `messages`, `behavioral_model`, `verification_result`, `target_environment`, необязательный `pipeline_specification`. SHA-256 канонического JSON связывает попытку и файл с конкретным контекстом. При отсутствии новой опции хеш старого контекста сохраняется. Хеш — контроль соответствия, не электронная подпись и не замена доверенному worker.
 
 ## LLM-интерфейс
 

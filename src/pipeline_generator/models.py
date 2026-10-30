@@ -31,10 +31,15 @@ class VerifiedContext(BaseModel):
     behavioral_model: dict[str, Any]
     verification_result: dict[str, Any]
     target_environment: dict[str, Any]
+    pipeline_specification: dict[str, Any] | None = None
 
     def fingerprint(self) -> str:
+        data = self.model_dump(mode="json")
+        # Preserve request hashes saved before the optional upstream specification existed.
+        if self.pipeline_specification is None:
+            data.pop("pipeline_specification")
         serialized = json.dumps(
-            self.model_dump(mode="json"),
+            data,
             sort_keys=True,
             ensure_ascii=False,
             separators=(",", ":"),

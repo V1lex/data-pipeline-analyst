@@ -40,6 +40,23 @@ run_id = repository.enqueue_verification(spec_id)
 
 Снимок выбранных сообщений фиксируется в момент создания версии. При новых решениях создаётся следующая версия; нельзя редактировать прежние `spec_json/context_json`. Индекс и короткая блокировка проекта обеспечивают уникальную последовательную нумерацию даже при конкурентном создании.
 
+### Подключение к ветке аналитика
+
+Проверено на PR [Андрея №3](https://github.com/V1lex/data-pipeline-analyst/pull/3), коммит `7a08e069c5dd5829626bb32f761cdc2475af7a71`, и ветке Кирилла `70653732cf73d591b2ec462d4584f5e588ad9e98` ([PR №4](https://github.com/V1lex/data-pipeline-analyst/pull/4)). Их исходники не изменены и не скопированы в пакет генератора.
+
+```python
+# chat_message — analyst.models.ChatMessage; pipeline — PipelineSpecification
+message_id = repository.add_message(project_id, chat_message.role, chat_message.content)
+spec_id = repository.create_specification(
+    project_id, pipeline, approved_requirements, [message_id],
+    {"pyspark_version": "3.5.8", "extra_dependencies": []},
+)
+```
+
+Роль аналитика `model` сохраняется как `assistant`. Для объекта `PipelineSpecification` вызывается его собственный `formal_model.to_formal_check_input()`: в `spec_json` поступает канонический Input Кирилла, в `context_json.pipeline_specification` — вся спецификация аналитика, включая схемы, операции и формулы. LLM получает оба снимка. Формальный DSL и операции не переписываются. Спецификация без formal_model отклоняется. Для сериализованной полной спецификации сначала вызывайте `PipelineSpecification.model_validate(data)` в backend; канонический Input можно передать как объект Pydantic или словарь.
+
+`PipelineSpecification.version` — семантическая версия формата, а `VerifiedContext.spec_version` — целочисленная редакция проекта в БД. Они независимы. `AnalystResponse.is_complete` и текст ответа не заменяют явное подтверждение пользователя: только backend вызывает `approve_specification` после подтверждения. Новое необязательное поле не меняет fingerprint старых контекстов и сохранённых запросов.
+
 ## Worker
 
 ```python
@@ -51,7 +68,7 @@ if run is not None:
     repository.finish_verification(run["id"], normalized_result)
 ```
 
-`checker.verify` — обозначение точки подключения, такого готового метода в просмотренной ветке Кирилла нет. При последней проверке ветки `tla_tlc` на коммите `7065373` уже появился `parser.parse_tlc_output(stdout, variables) -> str` с JSON-строкой. Код выше объясняет итоговый контракт worker, не является заявлением о сквозном запуске TLC: обёртка должна десериализовать ответ и гарантировать завершённую проверку всех свойств, включая reachable. В текущих compiler/runner для reachable ещё есть TODO; один progress вывод не является подтверждением завершения. `RunnerOutput.status='success'` не принимается вместо общего нормализованного ответа. Писать результат может доверенный worker, а не публичный клиент.
+`checker.verify` — обозначение точки подключения, такого готового метода в просмотренной ветке Кирилла нет. При последней проверке ветки `tla_tlc` на коммите `7065373` уже появился `parser.parse_tlc_output(stdout, variables) -> str` с JSON-строкой. `finish_verification` принимает канонический объект Pydantic, словарь или такую JSON-строку без изменения вердикта. Код выше объясняет итоговый контракт worker, не является заявлением о сквозном запуске TLC: обёртка должна гарантировать завершённую проверку всех свойств, включая reachable. В текущих compiler/runner для reachable ещё есть TODO; один progress вывод не является подтверждением завершения. `RunnerOutput.status='success'` не принимается вместо общего нормализованного ответа. Писать результат может доверенный worker, а не публичный клиент. Совместимость транспорта не доказывает достоверность результата текущего парсера.
 
 `list_specifications(project_id)`, `list_verifications(spec_id)`, `list_property_results(run_id)` возвращают историю. Полный ответ и диагностика всегда находятся в `verification_runs.result_json`. Отрицательный ответ не создаёт результатов для неизвестных свойств.
 
@@ -81,6 +98,18 @@ download_bytes = artifact.content.encode("utf-8")
 ```
 
 И текст `answer`, и код `content` создаются LLM. `PySparkGenerator` — обвязка вызова: передаёт контекст, разбирает ответ и не собирает PySpark из шаблонов. Текст не добавляется в скачиваемый `.py`.
+
+Если backend уже создал `analyst.llm_client.GeminiLLMClient`, используйте тот же SDK-клиент (установка: `uv sync --extra team`):
+
+```python
+from pipeline_generator.shared_gemini import SharedGeminiClient
+
+# analyst_client создан существующим кодом аналитика и читает общий GEMINI_MODEL.
+client = SharedGeminiClient.from_analyst_client(analyst_client)
+service = GenerationService(repository, PySparkGenerator(client))
+```
+
+Адаптер заимствует `analyst_client.client` и `model_name`, не создаёт второй Google-клиент и не закрывает общий ресурс. Закрывает его владелец backend. Метод аналитика `generate_response` не подходит генератору: он фиксирует схему `AnalystResponse`; наш адаптер обращается к общему SDK с отдельной схемой `answer/content`. Повторы SDK отключены для одного вызова (`attempts=1`), ограниченные повторы выполняет только `PySparkGenerator`. Тайм-аут передаётся SDK в миллисекундах. Реализация сверена с [официальной документацией Google Gen AI SDK](https://googleapis.github.io/python-genai/); тест реального SDK с локальным HTTP-транспортом проверяет сериализацию без обращения к Google. REST-клиент остаётся вариантом самостоятельного запуска.
 
 `request_id` создаётся backend один раз на пользовательское действие и повторно используется при сетевом повторе. Новый UUID — явная новая генерация. Имена выданных файлов включают UUID: существующие результаты не затираются. Ошибки доступны как `PipelineError.to_dict()` и не меняют результат TLC.
 
