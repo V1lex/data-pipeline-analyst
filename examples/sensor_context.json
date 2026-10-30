@@ -1,0 +1,203 @@
+{
+  "spec_id": "00000000-0000-0000-0000-000000000002",
+  "spec_version": 1,
+  "verification_run_id": "00000000-0000-0000-0000-000000000066",
+  "approved_requirements": "Read UTF-8 CSV with header and fields sensor string, temperature double. Drop rows with null or blank sensor or null/unparseable temperature. Negative temperatures are valid; do not drop them. Group by sensor; mean_temperature is average temperature, reading_count is the number of retained rows. Save Parquet to a new destination using errorifexists. CLI paths --readings and --output. Explicit CSV schema; SparkSession stops in finally. Synthetic rows north,10; north,20; south,-5; south,null; blank,100. Expected north: mean 15.0, count 2; south: mean -5.0, count 1. No join or extra business rules.",
+  "messages": [
+    {
+      "role": "user",
+      "content": "Read UTF-8 CSV with header and fields sensor string, temperature double. Drop rows with null or blank sensor or null/unparseable temperature. Negative temperatures are valid; do not drop them. Group by sensor; mean_temperature is average temperature, reading_count is the number of retained rows. Save Parquet to a new destination using errorifexists. CLI paths --readings and --output. Explicit CSV schema; SparkSession stops in finally. Synthetic rows north,10; north,20; south,-5; south,null; blank,100. Expected north: mean 15.0, count 2; south: mean -5.0, count 1. No join or extra business rules."
+    }
+  ],
+  "behavioral_model": {
+    "variables": [
+      {
+        "name": "cleaned",
+        "type": "boolean"
+      },
+      {
+        "name": "aggregated",
+        "type": "boolean"
+      },
+      {
+        "name": "saved",
+        "type": "boolean"
+      }
+    ],
+    "initial": {
+      "cleaned": false,
+      "aggregated": false,
+      "saved": false
+    },
+    "transitions": [
+      {
+        "name": "Complete_cleaned",
+        "guard": {
+          "eq": [
+            {
+              "var": "cleaned"
+            },
+            false
+          ]
+        },
+        "effects": [
+          {
+            "set": [
+              "cleaned",
+              true
+            ]
+          }
+        ]
+      },
+      {
+        "name": "Complete_aggregated",
+        "guard": {
+          "and": [
+            {
+              "eq": [
+                {
+                  "var": "aggregated"
+                },
+                false
+              ]
+            },
+            {
+              "eq": [
+                {
+                  "var": "cleaned"
+                },
+                true
+              ]
+            }
+          ]
+        },
+        "effects": [
+          {
+            "set": [
+              "aggregated",
+              true
+            ]
+          }
+        ]
+      },
+      {
+        "name": "Complete_saved",
+        "guard": {
+          "and": [
+            {
+              "eq": [
+                {
+                  "var": "saved"
+                },
+                false
+              ]
+            },
+            {
+              "eq": [
+                {
+                  "var": "aggregated"
+                },
+                true
+              ]
+            }
+          ]
+        },
+        "effects": [
+          {
+            "set": [
+              "saved",
+              true
+            ]
+          }
+        ]
+      }
+    ],
+    "properties": [
+      {
+        "id": "P1",
+        "type": "invariant",
+        "expression": {
+          "or": [
+            {
+              "eq": [
+                {
+                  "var": "saved"
+                },
+                false
+              ]
+            },
+            {
+              "eq": [
+                {
+                  "var": "aggregated"
+                },
+                true
+              ]
+            }
+          ]
+        }
+      },
+      {
+        "id": "P2",
+        "type": "forbidden_state",
+        "expression": {
+          "and": [
+            {
+              "eq": [
+                {
+                  "var": "saved"
+                },
+                true
+              ]
+            },
+            {
+              "eq": [
+                {
+                  "var": "aggregated"
+                },
+                false
+              ]
+            }
+          ]
+        }
+      },
+      {
+        "id": "P3",
+        "type": "reachable",
+        "expression": {
+          "eq": [
+            {
+              "var": "saved"
+            },
+            true
+          ]
+        }
+      },
+      {
+        "id": "P4",
+        "type": "deadlock_free",
+        "expression": {
+          "eq": [
+            {
+              "var": "saved"
+            },
+            true
+          ]
+        }
+      }
+    ]
+  },
+  "verification_result": {
+    "status": "PROPERTY_HOLDS",
+    "engine": "TLC",
+    "statistics": {
+      "states_generated": 0,
+      "distinct_states": 0,
+      "depth": 0
+    }
+  },
+  "target_environment": {
+    "pyspark_version": "3.5.8",
+    "extra_dependencies": []
+  }
+}

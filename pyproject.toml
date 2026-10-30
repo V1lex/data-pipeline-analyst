@@ -1,0 +1,32 @@
+[build-system]
+requires = ["hatchling>=1.26"]
+build-backend = "hatchling.build"
+
+[project]
+name = "pipeline-generator"
+version = "0.1.0"
+description = "Version-bound LLM PySpark generation and PostgreSQL storage"
+requires-python = ">=3.12"
+dependencies = ["pydantic>=2.10,<3", "psycopg[binary]>=3.2,<4", "httpx>=0.28,<1", "python-dotenv>=1.0,<2"]
+
+[project.optional-dependencies]
+dev = ["pytest>=8,<10", "ruff>=0.9,<1"]
+spark = ["pyspark==3.5.8"]
+team = ["google-genai>=2.34,<3"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/pipeline_generator"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+addopts = "-ra"
+markers = ["postgres: requires TEST_DATABASE_URL for an isolated PostgreSQL database", "spark: explicit local synthetic-data demonstration"]
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+ignore = ["E501"]
