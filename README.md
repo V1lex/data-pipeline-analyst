@@ -15,6 +15,8 @@ AI analyst that turns natural language requirements into data pipeline specifica
 
 Нужны Python 3.12+ и PostgreSQL. Spark требуется только для отдельной демонстрации, не для самого генератора.
 
+В `.python-version` для воспроизведения разработки зафиксирован Python 3.12, как в формальном модуле команды.
+
 ```sh
 uv sync --extra dev
 cp -n .env.example .env

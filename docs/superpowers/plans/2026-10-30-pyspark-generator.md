@@ -66,12 +66,13 @@ Interfaces: `GeminiClient` implements `LlmClient`; `GenerationService.generate(U
 
 Files: `examples/`, `tests/test_examples.py`, `README.md`, `docs/validation.md`, updated `agents/` journals.
 
-- [ ] Prepare two complete agreed synthetic scenarios: revenue by city and sensor aggregation.
-- [ ] Mark manually written reference scripts and fake responses explicitly; do not count either as live generation.
-- [ ] Verify expected outputs and data-quality failure cases in a compatible local Spark runtime where available.
-- [ ] Attempt real Gemini only with an explicitly configured environment key; no paid fallback.
-- [ ] Run final suite and lint, independent whole-branch review, fix material findings and record exact evidence.
-- [ ] Commit; update Sfera with actual results, keeping blocked acceptance items open.
+- [x] Prepare two complete agreed synthetic scenarios: revenue by city and sensor aggregation.
+- [x] Mark manually written reference scripts and fake responses explicitly; do not count either as live generation.
+- [x] Verify expected outputs and data-quality failure cases in a compatible local Spark runtime where available.
+- [x] Attempt real Gemini only with an explicitly configured environment key; no paid fallback.
+- [x] Run final suite and lint, independent whole-branch review, fix material findings and record exact evidence.
+- [x] Commit independent implementation and verified reference scenarios.
+- [ ] Update Sfera with actual results — BLOCKED: site timeout / subsequently locked Mac. Prepared local status text; full live Gemini and API integration acceptance remains open.
 
 ## Execution decisions
 

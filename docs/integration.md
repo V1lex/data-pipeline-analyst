@@ -96,3 +96,12 @@ uv run ruff check src tests examples
 PostgreSQL-тесты создают собственную случайную схему и удаляют только её; без `TEST_DATABASE_URL` они отмечаются skipped. Используйте выделенную тестовую БД с правом создавать схемы.
 
 Модуль предоставляет проверенный сервисный интерфейс. Подключение к настоящим API/UI Вани и парсеру Кирилла остаётся командной интеграцией и не считается выполненным только по fake-клиенту.
+
+## Документация провайдера
+
+- [Gemini generateContent и причины завершения](https://ai.google.dev/api/generate-content)
+- [Структурированный JSON-ответ](https://ai.google.dev/gemini-api/docs/structured-output)
+- [Доступные модели](https://ai.google.dev/gemini-api/docs/models)
+- [Тарифы и доступность free tier](https://ai.google.dev/gemini-api/docs/pricing)
+
+Версии и квоты выбранной модели проверяются в конкретном проекте AI Studio; модуль не включает платный fallback.
