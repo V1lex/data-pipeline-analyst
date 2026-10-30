@@ -6,6 +6,11 @@ from analyst.completeness import (
     MissingParameter,
     ParameterOrigin,
 )
+from analyst.formal_feedback import (
+    FormalFeedbackExplainer,
+    RevisionProposal,
+    VerificationExplanation,
+)
 from analyst.llm_client import BaseLLMClient, GeminiLLMClient, MockLLMClient
 from analyst.models import (
     AnalystResponse,
@@ -41,4 +46,7 @@ __all__ = [
     "OutOfScopeError",
     "ScopeCheckResult",
     "check_scope",
+    "FormalFeedbackExplainer",
+    "RevisionProposal",
+    "VerificationExplanation",
 ]
