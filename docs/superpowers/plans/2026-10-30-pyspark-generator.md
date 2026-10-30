@@ -33,11 +33,11 @@ Files: `pyproject.toml`, `src/pipeline_generator/{models,errors,llm,generator}.p
 
 Interfaces: `VerifiedContext`, `Completion`, `GeneratedCode`; `LlmClient.complete(system,user,response_schema)`; `PySparkGenerator.generate(context)`.
 
-- [ ] Write tests for successful complete JSON, all denial statuses, missing context, clarification, malformed/empty/truncated output, context fidelity and bounded transient retries.
-- [ ] Run and observe failures before implementing.
-- [ ] Implement strict models, prompt assembly and injected LLM client.
-- [ ] Run generator tests and full current suite; inspect output.
-- [ ] Copy only owned files into requested checkout, review and commit coherent result.
+- [x] Write tests for successful complete JSON, all denial statuses, missing context, clarification, malformed/empty/truncated output, context fidelity and bounded transient retries.
+- [x] Run and observe failures before implementing.
+- [x] Implement strict models, prompt assembly and injected LLM client.
+- [x] Run generator tests and full current suite; inspect output.
+- [x] Copy only owned files into requested checkout, review and commit coherent result.
 
 ## Task 2 — PostgreSQL repository (T23)
 
@@ -45,11 +45,11 @@ Files: `src/pipeline_generator/storage.py`, `src/pipeline_generator/migrations/0
 
 Interfaces: create/get project; add/list messages; create/list/approve specification; enqueue/claim/finish/list runs; load verified context; get artifact; reserve/finalize/fail generation manifest. Each method owns a short connection/transaction.
 
-- [ ] Write tests against an isolated real PostgreSQL schema for persistence after reconnection, immutable versions, exact snapshot, history, raw error/counterexample storage and queue claim.
-- [ ] Run and observe missing-feature failures.
-- [ ] Implement schema and repository with parameterized SQL, immutable snapshots and stored-result gate.
-- [ ] Run PostgreSQL and generator suite.
-- [ ] Review diff and commit.
+- [x] Write tests against an isolated real PostgreSQL schema for persistence after reconnection, immutable versions, exact snapshot, history, raw error/counterexample storage and queue claim.
+- [x] Run and observe missing-feature failures.
+- [x] Implement schema and repository with parameterized SQL, immutable snapshots and stored-result gate.
+- [x] Run PostgreSQL and generator suite.
+- [x] Review diff and commit.
 
 ## Task 3 — Gemini adapter and issuance service (T24/T25)
 
@@ -57,10 +57,10 @@ Files: `src/pipeline_generator/{gemini,service}.py`, `tests/test_gemini.py`, `te
 
 Interfaces: `GeminiClient` implements `LlmClient`; `GenerationService.generate(UUID,UUID)` returns persisted `GeneratedArtifact`; authorized backend serves `repository.get_artifact(spec_id,artifact_id)`.
 
-- [ ] Write tests at the real HTTP transport boundary and real repository for STOP/MAX_TOKENS, auth/timeouts/retries, idempotent and concurrent calls, latest-result gate, failure atomicity and independent regeneration.
-- [ ] Observe failures, then implement adapter and service.
-- [ ] Run complete suite; record any true external blocker.
-- [ ] Review diff and commit.
+- [x] Write tests at the real HTTP transport boundary and real repository for STOP/MAX_TOKENS, auth/timeouts/retries, idempotent and concurrent calls, latest-result gate, failure atomicity and independent regeneration.
+- [x] Observe failures, then implement adapter and service.
+- [x] Run complete suite; record any true external blocker.
+- [x] Review diff and commit.
 
 ## Task 4 — Demonstration and integration evidence (T26)
 

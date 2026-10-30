@@ -1,0 +1,271 @@
+{
+  "spec_id": "00000000-0000-0000-0000-000000000001",
+  "spec_version": 1,
+  "verification_run_id": "00000000-0000-0000-0000-000000000065",
+  "approved_requirements": "Read UTF-8 CSV with headers. Orders fields: product_id string, quantity decimal(18,2), city string. Prices fields: product_id string, price decimal(18,2). Require every listed field to be non-null, and string fields non-blank; require unique product_id in prices. On either validation failure stop without writing output. Finish both independent validations before joining. Inner join orders and prices on product_id; an order without a price is excluded. line_revenue = quantity * price; sum by city into revenue. Save Parquet to a new destination with errorifexists, never overwrite. Accept input/output paths as --orders, --prices, --output. Use explicit CSV schemas and stop SparkSession in finally. Test orders (A,2,Москва),(A,1,Москва),(B,3,Казань); prices (A,100),(B,50); expected Москва=300, Казань=150, irrespective of row order.",
+  "messages": [
+    {
+      "role": "user",
+      "content": "Read UTF-8 CSV with headers. Orders fields: product_id string, quantity decimal(18,2), city string. Prices fields: product_id string, price decimal(18,2). Require every listed field to be non-null, and string fields non-blank; require unique product_id in prices. On either validation failure stop without writing output. Finish both independent validations before joining. Inner join orders and prices on product_id; an order without a price is excluded. line_revenue = quantity * price; sum by city into revenue. Save Parquet to a new destination with errorifexists, never overwrite. Accept input/output paths as --orders, --prices, --output. Use explicit CSV schemas and stop SparkSession in finally. Test orders (A,2,Москва),(A,1,Москва),(B,3,Казань); prices (A,100),(B,50); expected Москва=300, Казань=150, irrespective of row order."
+    }
+  ],
+  "behavioral_model": {
+    "variables": [
+      {
+        "name": "orders_checked",
+        "type": "boolean"
+      },
+      {
+        "name": "prices_checked",
+        "type": "boolean"
+      },
+      {
+        "name": "joined",
+        "type": "boolean"
+      },
+      {
+        "name": "aggregated",
+        "type": "boolean"
+      },
+      {
+        "name": "saved",
+        "type": "boolean"
+      }
+    ],
+    "initial": {
+      "orders_checked": false,
+      "prices_checked": false,
+      "joined": false,
+      "aggregated": false,
+      "saved": false
+    },
+    "transitions": [
+      {
+        "name": "Complete_orders_checked",
+        "guard": {
+          "eq": [
+            {
+              "var": "orders_checked"
+            },
+            false
+          ]
+        },
+        "effects": [
+          {
+            "set": [
+              "orders_checked",
+              true
+            ]
+          }
+        ]
+      },
+      {
+        "name": "Complete_prices_checked",
+        "guard": {
+          "eq": [
+            {
+              "var": "prices_checked"
+            },
+            false
+          ]
+        },
+        "effects": [
+          {
+            "set": [
+              "prices_checked",
+              true
+            ]
+          }
+        ]
+      },
+      {
+        "name": "Complete_joined",
+        "guard": {
+          "and": [
+            {
+              "eq": [
+                {
+                  "var": "joined"
+                },
+                false
+              ]
+            },
+            {
+              "eq": [
+                {
+                  "var": "orders_checked"
+                },
+                true
+              ]
+            },
+            {
+              "eq": [
+                {
+                  "var": "prices_checked"
+                },
+                true
+              ]
+            }
+          ]
+        },
+        "effects": [
+          {
+            "set": [
+              "joined",
+              true
+            ]
+          }
+        ]
+      },
+      {
+        "name": "Complete_aggregated",
+        "guard": {
+          "and": [
+            {
+              "eq": [
+                {
+                  "var": "aggregated"
+                },
+                false
+              ]
+            },
+            {
+              "eq": [
+                {
+                  "var": "joined"
+                },
+                true
+              ]
+            }
+          ]
+        },
+        "effects": [
+          {
+            "set": [
+              "aggregated",
+              true
+            ]
+          }
+        ]
+      },
+      {
+        "name": "Complete_saved",
+        "guard": {
+          "and": [
+            {
+              "eq": [
+                {
+                  "var": "saved"
+                },
+                false
+              ]
+            },
+            {
+              "eq": [
+                {
+                  "var": "aggregated"
+                },
+                true
+              ]
+            }
+          ]
+        },
+        "effects": [
+          {
+            "set": [
+              "saved",
+              true
+            ]
+          }
+        ]
+      }
+    ],
+    "properties": [
+      {
+        "id": "P1",
+        "type": "invariant",
+        "expression": {
+          "or": [
+            {
+              "eq": [
+                {
+                  "var": "saved"
+                },
+                false
+              ]
+            },
+            {
+              "eq": [
+                {
+                  "var": "aggregated"
+                },
+                true
+              ]
+            }
+          ]
+        }
+      },
+      {
+        "id": "P2",
+        "type": "forbidden_state",
+        "expression": {
+          "and": [
+            {
+              "eq": [
+                {
+                  "var": "saved"
+                },
+                true
+              ]
+            },
+            {
+              "eq": [
+                {
+                  "var": "aggregated"
+                },
+                false
+              ]
+            }
+          ]
+        }
+      },
+      {
+        "id": "P3",
+        "type": "reachable",
+        "expression": {
+          "eq": [
+            {
+              "var": "saved"
+            },
+            true
+          ]
+        }
+      },
+      {
+        "id": "P4",
+        "type": "deadlock_free",
+        "expression": {
+          "eq": [
+            {
+              "var": "saved"
+            },
+            true
+          ]
+        }
+      }
+    ]
+  },
+  "verification_result": {
+    "status": "PROPERTY_HOLDS",
+    "engine": "TLC",
+    "statistics": {
+      "states_generated": 0,
+      "distinct_states": 0,
+      "depth": 0
+    }
+  },
+  "target_environment": {
+    "pyspark_version": "3.5.8",
+    "extra_dependencies": []
+  }
+}
