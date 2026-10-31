@@ -218,3 +218,84 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# ==========================================
+# Python & Virtual Environments
+# ==========================================
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.venv/
+venv/
+ENV/
+env/
+
+# Package distributions & build artifacts
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# ==========================================
+# Environment Variables & Secrets
+# ==========================================
+.env
+.env.local
+.env.*.local
+
+# ==========================================
+# IDEs & Editors (PyCharm, VS Code)
+# ==========================================
+.idea/
+.vscode/
+*.swp
+*.swo
+*.swn
+*~
+
+# ==========================================
+# Testing, Caches & Linters
+# ==========================================
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.tox/
+.nox/
+.coverage
+htmlcov/
+.cache/
+
+# ==========================================
+# Logs & Temporary Files
+# ==========================================
+logs/
+*.log
+*.sqlite
+*.sqlite3
+
+# ==========================================
+# Operating System Specific Files
+# ==========================================
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+Desktop.ini
