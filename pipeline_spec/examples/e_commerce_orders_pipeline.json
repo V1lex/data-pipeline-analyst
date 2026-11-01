@@ -1,0 +1,496 @@
+{
+  "version": "1.0.0",
+  "metadata": {
+    "id": "e_commerce_daily_sales_pipeline",
+    "name": "E-Commerce Daily Sales Mart Pipeline",
+    "description": "Ingests daily raw orders and customer profiles, validates status and data quality, calculates net revenue, aggregates sales metrics by country and customer tier, and writes the analytical mart in Parquet format.",
+    "author": "Analyst Agent",
+    "tags": ["e-commerce", "daily", "sales", "gold_mart"]
+  },
+  "sources": [
+    {
+      "id": "raw_orders",
+      "name": "Raw Orders Stream/Batch",
+      "description": "Daily snapshot of e-commerce transactions",
+      "format": "csv",
+      "location": "s3://data-lake/raw/orders/",
+      "options": {
+        "header": "true",
+        "delimiter": ","
+      },
+      "schema": {
+        "columns": [
+          {"name": "order_id", "data_type": "string", "nullable": false, "description": "Unique order ID"},
+          {"name": "customer_id", "data_type": "string", "nullable": false, "description": "Customer identifier"},
+          {"name": "order_date", "data_type": "date", "nullable": false, "description": "Date of transaction"},
+          {"name": "status", "data_type": "string", "nullable": false, "description": "Order status"},
+          {"name": "amount", "data_type": "double", "nullable": false, "description": "Gross order amount in USD"},
+          {"name": "discount_pct", "data_type": "double", "nullable": false, "description": "Discount percentage (0-100)"},
+          {"name": "country", "data_type": "string", "nullable": false, "description": "Billing country ISO code"}
+        ]
+      }
+    },
+    {
+      "id": "raw_customers",
+      "name": "Customer Profiles",
+      "description": "Customer dimensional data",
+      "format": "parquet",
+      "location": "s3://data-lake/raw/customers/",
+      "options": {},
+      "schema": {
+        "columns": [
+          {"name": "customer_id", "data_type": "string", "nullable": false, "description": "Unique customer ID"},
+          {"name": "customer_tier", "data_type": "string", "nullable": true, "description": "VIP, GOLD, REGULAR"},
+          {"name": "is_active", "data_type": "boolean", "nullable": false, "description": "Active account flag"}
+        ]
+      }
+    }
+  ],
+  "steps": [
+    {
+      "id": "read_orders",
+      "name": "Read Raw Orders",
+      "description": "Loads raw order CSV dataset into DataFrame",
+      "inputs": ["raw_orders"],
+      "depends_on": ["raw_orders"],
+      "operation": {
+        "type": "read",
+        "source_id": "raw_orders"
+      }
+    },
+    {
+      "id": "read_customers",
+      "name": "Read Customer Profiles",
+      "description": "Loads customer Parquet dataset into DataFrame",
+      "inputs": ["raw_customers"],
+      "depends_on": ["raw_customers"],
+      "operation": {
+        "type": "read",
+        "source_id": "raw_customers"
+      }
+    },
+    {
+      "id": "filter_valid_orders",
+      "name": "Filter Valid Orders",
+      "description": "Filters out cancelled orders and invalid non-positive amounts",
+      "inputs": ["read_orders"],
+      "depends_on": ["read_orders"],
+      "operation": {
+        "type": "filter",
+        "condition": {
+          "and": [
+            {
+              "ne": [
+                {"col": "status"},
+                {"lit": "CANCELLED"}
+              ]
+            },
+            {
+              "gt": [
+                {"col": "amount"},
+                {"lit": 0.0}
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "filter_active_customers",
+      "name": "Filter Active Customers",
+      "description": "Retains only active customers",
+      "inputs": ["read_customers"],
+      "depends_on": ["read_customers"],
+      "operation": {
+        "type": "filter",
+        "condition": {
+          "eq": [
+            {"col": "is_active"},
+            {"lit": true}
+          ]
+        }
+      }
+    },
+    {
+      "id": "join_orders_customers",
+      "name": "Enrich Orders with Customers",
+      "description": "Left joins valid orders with active customer profiles by customer_id",
+      "inputs": ["filter_valid_orders", "filter_active_customers"],
+      "depends_on": ["filter_valid_orders", "filter_active_customers"],
+      "operation": {
+        "type": "join",
+        "right_input": "filter_active_customers",
+        "join_type": "left",
+        "on": ["customer_id"]
+      }
+    },
+    {
+      "id": "compute_net_revenue",
+      "name": "Compute Discounted Revenue and Clean Tier",
+      "description": "Calculates net amount after discount and coalesces missing tier to REGULAR",
+      "inputs": ["join_orders_customers"],
+      "depends_on": ["join_orders_customers"],
+      "operation": {
+        "type": "with_columns",
+        "columns": [
+          {
+            "name": "net_amount",
+            "expr": {
+              "mul": [
+                {"col": "amount"},
+                {
+                  "sub": [
+                    {"lit": 1.0},
+                    {
+                      "div": [
+                        {"col": "discount_pct"},
+                        {"lit": 100.0}
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          },
+          {
+            "name": "customer_tier_clean",
+            "expr": {
+              "func": "coalesce",
+              "args": [
+                {"col": "customer_tier"},
+                {"lit": "REGULAR"}
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "aggregate_daily_metrics",
+      "name": "Aggregate Daily Sales by Country and Tier",
+      "description": "Groups by order_date, country, and customer_tier_clean, computing sales aggregations",
+      "inputs": ["compute_net_revenue"],
+      "depends_on": ["compute_net_revenue"],
+      "operation": {
+        "type": "aggregate",
+        "group_by": ["order_date", "country", "customer_tier_clean"],
+        "aggregations": [
+          {
+            "agg_func": "count",
+            "column": "order_id",
+            "alias": "total_orders"
+          },
+          {
+            "agg_func": "sum",
+            "column": "net_amount",
+            "alias": "total_net_revenue"
+          },
+          {
+            "agg_func": "avg",
+            "column": "net_amount",
+            "alias": "avg_order_value"
+          },
+          {
+            "agg_func": "count_distinct",
+            "column": "customer_id",
+            "alias": "unique_customers"
+          }
+        ]
+      }
+    },
+    {
+      "id": "sort_metrics",
+      "name": "Sort Aggregated Sales",
+      "description": "Sorts results by date descending and revenue descending",
+      "inputs": ["aggregate_daily_metrics"],
+      "depends_on": ["aggregate_daily_metrics"],
+      "operation": {
+        "type": "sort",
+        "order_by": [
+          {
+            "column": "order_date",
+            "direction": "desc",
+            "null_ordering": "nulls_last"
+          },
+          {
+            "column": "total_net_revenue",
+            "direction": "desc",
+            "null_ordering": "nulls_last"
+          }
+        ]
+      }
+    },
+    {
+      "id": "write_to_sales_mart",
+      "name": "Write to Daily Sales Mart Sink",
+      "description": "Writes final transformed DataFrame to output gold mart",
+      "inputs": ["sort_metrics"],
+      "depends_on": ["sort_metrics"],
+      "operation": {
+        "type": "write",
+        "sink_id": "daily_sales_mart"
+      }
+    }
+  ],
+  "sinks": [
+    {
+      "id": "daily_sales_mart",
+      "name": "Daily Sales Analytical Mart",
+      "description": "Gold layer Parquet mart partitioned by country",
+      "from_step": "write_to_sales_mart",
+      "format": "parquet",
+      "location": "s3://data-lake/gold/daily_sales_mart/",
+      "save_mode": "overwrite",
+      "partition_by": ["country"],
+      "options": {
+        "compression": "snappy"
+      }
+    }
+  ],
+  "constraints": [
+    {
+      "id": "qc_not_null_order_id",
+      "name": "Order ID Not Null",
+      "description": "Raw orders must have non-null order IDs",
+      "target_step": "read_orders",
+      "columns": ["order_id"],
+      "type": "not_null",
+      "level": "error"
+    },
+    {
+      "id": "qc_positive_amount",
+      "name": "Positive Amount In Filtered Orders",
+      "description": "Filtered orders must all have amount > 0",
+      "target_step": "filter_valid_orders",
+      "columns": ["amount"],
+      "type": "range",
+      "params": {
+        "min": 0.01
+      },
+      "level": "error"
+    },
+    {
+      "id": "qc_revenue_non_negative",
+      "name": "Aggregated Revenue Non-Negative",
+      "description": "Total net revenue must be greater than or equal to 0",
+      "target_step": "aggregate_daily_metrics",
+      "columns": ["total_net_revenue"],
+      "type": "range",
+      "params": {
+        "min": 0.0
+      },
+      "level": "error"
+    }
+  ],
+  "formal_model": {
+    "variables": [
+      {
+        "name": "status",
+        "type": "enum",
+        "values": ["IDLE", "READ", "FILTERED", "JOINED", "AGGREGATED", "WRITTEN", "FAILED"]
+      },
+      {
+        "name": "data_valid",
+        "type": "boolean"
+      },
+      {
+        "name": "attempts",
+        "type": "integer",
+        "min": 0,
+        "max": 3
+      }
+    ],
+    "initial": {
+      "status": "IDLE",
+      "data_valid": true,
+      "attempts": 0
+    },
+    "transitions": [
+      {
+        "name": "ExecuteRead",
+        "guard": {
+          "eq": [
+            {"var": "status"},
+            "IDLE"
+          ]
+        },
+        "effects": [
+          {
+            "set": [
+              "status",
+              "READ"
+            ]
+          }
+        ]
+      },
+      {
+        "name": "ExecuteFilter",
+        "guard": {
+          "eq": [
+            {"var": "status"},
+            "READ"
+          ]
+        },
+        "effects": [
+          {
+            "set": [
+              "status",
+              "FILTERED"
+            ]
+          }
+        ]
+      },
+      {
+        "name": "ExecuteJoin",
+        "guard": {
+          "eq": [
+            {"var": "status"},
+            "FILTERED"
+          ]
+        },
+        "effects": [
+          {
+            "set": [
+              "status",
+              "JOINED"
+            ]
+          }
+        ]
+      },
+      {
+        "name": "ExecuteAggregate",
+        "guard": {
+          "eq": [
+            {"var": "status"},
+            "JOINED"
+          ]
+        },
+        "effects": [
+          {
+            "set": [
+              "status",
+              "AGGREGATED"
+            ]
+          }
+        ]
+      },
+      {
+        "name": "ExecuteWrite",
+        "guard": {
+          "and": [
+            {
+              "eq": [
+                {"var": "status"},
+                "AGGREGATED"
+              ]
+            },
+            {
+              "eq": [
+                {"var": "data_valid"},
+                true
+              ]
+            }
+          ]
+        },
+        "effects": [
+          {
+            "set": [
+              "status",
+              "WRITTEN"
+            ]
+          }
+        ]
+      },
+      {
+        "name": "FailExecution",
+        "guard": {
+          "and": [
+            {
+              "ne": [
+                {"var": "status"},
+                "WRITTEN"
+              ]
+            },
+            {
+              "lt": [
+                {"var": "attempts"},
+                3
+              ]
+            }
+          ]
+        },
+        "effects": [
+          {
+            "set": [
+              "status",
+              "FAILED"
+            ]
+          },
+          {
+            "set": [
+              "attempts",
+              {
+                "add": [
+                  {"var": "attempts"},
+                  1
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "properties": [
+      {
+        "id": "P_NeverWriteWhenInvalid",
+        "type": "forbidden_state",
+        "expression": {
+          "and": [
+            {
+              "eq": [
+                {"var": "status"},
+                "WRITTEN"
+              ]
+            },
+            {
+              "eq": [
+                {"var": "data_valid"},
+                false
+              ]
+            }
+          ]
+        }
+      },
+      {
+        "id": "P_MaxAttemptsBounded",
+        "type": "invariant",
+        "expression": {
+          "le": [
+            {"var": "attempts"},
+            3
+          ]
+        }
+      },
+      {
+        "id": "P_ReachWritten",
+        "type": "reachable",
+        "expression": {
+          "eq": [
+            {"var": "status"},
+            "WRITTEN"
+          ]
+        }
+      },
+      {
+        "id": "P_DeadlockFree",
+        "type": "deadlock_free",
+        "expression": {
+          "in": [
+            {"var": "status"},
+            ["WRITTEN", "FAILED"]
+          ]
+        }
+      }
+    ]
+  }
+}
