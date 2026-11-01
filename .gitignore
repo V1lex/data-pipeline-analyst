@@ -230,3 +230,6 @@ frontend/dist/
 
 # Commit workspace resolution for reproducible installs
 !uv.lock
+
+# Frontend dependencies are installed from package-lock.json
+node_modules/

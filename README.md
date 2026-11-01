@@ -1,45 +1,101 @@
-# data-pipeline-analyst
-AI analyst that turns natural language requirements into data pipeline specifications, verifies them with TLA+/TLC, and generates PySpark code.
+# Data Pipeline Analyst
 
-## Модуль PySpark и хранения — T22–T26
+Локальный MVP: диалог с Gemini → согласованная версия спецификации → формальная проверка TLA+/TLC → генерация и скачивание PySpark.
 
-В этой ветке реализована часть Дмитрия: PostgreSQL-хранилище, LLM-генератор, заменяемый клиент Gemini и сервис сохранения/выдачи файлов конкретной проверенной версии. Диалоговый аналитик и формальный движок остаются отдельными модулями команды.
+Ветки команды объединены с сохранением истории. Рабочая интеграция предназначена для `dev`; `main` остаётся стабильной базой.
 
-Генератор здесь — обвязка вызова LLM: модель получает контекст и возвращает обычный текст `answer` вместе с полным PySpark-кодом `content`. Обвязка проверяет формат, сохраняет и выдаёт их. Ручные скрипты в examples — только тестовые образцы.
+```text
+backend/
+  src/
+    api/                 FastAPI, HTTP-контракты
+    agent/analyst/       диалог, полнота требований, согласование параметров
+    agent/workflow.py    сохранение диалога и создание версий
+    compiler/formal_check/  TLA+, TLC, нормализованный результат
+    validator/           общий семантический валидатор
+    pipeline_spec/       единый контракт PipelineSpecification
+    pipeline_generator/ LLM-генерация и PostgreSQL-репозиторий
+    db/                  SQLAlchemy-модели и запуск Alembic
+    main.py
+  alembic/               первая миграция + совместимая миграция MVP
+  pyproject.toml
+worker/src/runner.py     независимый процесс очереди FOR UPDATE SKIP LOCKED
+frontend/               React + React Flow, Vite, nginx
+infra/docker-compose.yml
+scripts/download_tlc.py
+```
 
-- [Контракт генератора](docs/generator_contract.md)
-- [Подключение к backend/worker](docs/integration.md)
-- [Инструкция модели](src/pipeline_generator/generation_prompt.md)
-- [Два синтетических примера](examples/README.md)
-- [Фактические проверки и ограничения](docs/validation.md)
+Вложенные пакеты аналитика и формального движка сохранены для понятной связи с работой авторов. Все импорты имеют единую идентичность: `agent.analyst`, `compiler.formal_check`, `pipeline_spec`, `pipeline_generator`.
 
-## Запуск разработки
+## Быстрый запуск в Docker
 
-Нужны Python 3.12+ и PostgreSQL. Spark требуется только для отдельной демонстрации, не для самого генератора.
+Нужны Docker Compose и Python для загрузки проверенного TLC. Настоящие ключи хранятся только в локальном `.env`.
 
-В `.python-version` для воспроизведения разработки зафиксирован Python 3.12, как в формальном модуле команды.
+```sh
+cp -n .env.example .env
+python3 scripts/download_tlc.py
+docker compose --env-file .env -f infra/docker-compose.yml up --build
+```
+
+В `.env` укажите `GEMINI_API_KEY` и доступную вам `GEMINI_MODEL`. Compose использует `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB` для внутреннего подключения; `DATABASE_URL` нужен при локальном запуске. Backend применяет Alembic, проходит healthcheck, затем запускается worker. Данные PostgreSQL остаются в именованном volume.
+
+- Интерфейс: <http://localhost:3000>
+- OpenAPI: <http://localhost:8000/docs>
+- Проверка готовности БД и API: <http://localhost:8000/api/v1/health>
+
+## Разработка без Docker
+
+Python 3.12+, PostgreSQL и Java 8+; Spark требуется только для отдельных демонстраций. Python-зависимости принадлежат `backend/pyproject.toml`, корень — uv workspace.
 
 ```sh
 uv sync --extra dev
-cp -n .env.example .env
-uv run pytest -q
-uv run ruff check src tests examples
+uv run python scripts/download_tlc.py
+# DATABASE_URL и DATABASE_SCHEMA берутся из корневого .env
+uv run python -m db.migrations
+uv run uvicorn api.app:app --host 127.0.0.1 --port 8000
 ```
 
-`cp -n` сохраняет уже существующий `.env`. Настройки Gemini можно явно прочитать через `GeminiClient.from_environment(env_file=".env")`; окружение процесса имеет приоритет. Настройте `DATABASE_URL` для своей PostgreSQL отдельно. Настоящий ключ хранится только локально; `.env` исключён из Git.
+В отдельных терминалах:
 
-Для полной проверки хранения используйте выделенную тестовую PostgreSQL:
+```sh
+uv run python -m worker.src.runner
+npm ci --prefix frontend
+npm run dev --prefix frontend
+```
+
+Vite открывается на <http://127.0.0.1:5173> и проксирует `/api` на порт 8000. При недоступности uv можно создать Python venv и установить `pip install -e './backend[dev]'`.
+
+## Сценарий
+
+1. Создайте проект, опишите задачу и ответьте на вопросы аналитика. Новые предложения требуют согласования; неполный или некорректный черновик не считается готовым.
+2. Создайте спецификацию. Интерфейс показывает граф и полный JSON. Согласуйте конкретную версию.
+3. Запустите TLC. Worker сохранит полный результат; интерфейс обновляется автоматически и показывает контрпример при нарушении.
+4. После общего `PROPERTY_HOLDS` получите PySpark. Код и текст создаёт LLM; файл сохраняется за этой версией и доступен после перезапуска. Сетевой повтор использует тот же UUID, явная новая попытка — новый.
+5. Изменения требований создают новую версию с отдельным согласованием и проверкой. Старые спецификации и выданные файлы не перезаписываются.
+
+TLC проверяет конечную модель процесса, включая каждое `reachable`-свойство. Это не доказательство корректности сгенерированного Python; сервер его не исполняет.
+
+## Проверки
+
+```sh
+uv run pytest -q
+uv run ruff check backend/src tests examples worker scripts
+npm test --prefix frontend
+npm run build --prefix frontend
+docker compose --env-file .env.example -f infra/docker-compose.yml config --quiet
+```
+
+Для полной проверки используйте отдельную тестовую PostgreSQL с правом создания схем:
 
 ```sh
 TEST_DATABASE_URL='postgresql://user:password@localhost/test_database' uv run pytest -q
 ```
 
-Тесты создают и удаляют только собственные случайные схемы. Без `TEST_DATABASE_URL` PostgreSQL-тесты пропускаются, поэтому один зелёный запуск без этой переменной не подтверждает интеграцию БД.
+Тесты создают случайные схемы и удаляют только их. Без `TEST_DATABASE_URL` проверки БД пропускаются. Реальные TLC-тесты требуют скачанный jar и Java. Spark-примеры запускаются отдельно с `RUN_SPARK_TESTS=1` и дополнением `backend[spark]`.
 
-Миграция запускается явно один раз в пустой согласованной схеме; пример в `docs/integration.md`. Не запускайте начальную миграцию поверх таблиц другого варианта backend.
+Фактическая проверка интеграции 01.11.2026: **216 passed, 7 skipped** с настоящими PostgreSQL и Java/TLC; сборка интерфейса, конфигурация Compose и установка wheel с миграциями проверены. Docker daemon на машине не запущен: полный контейнерный старт не проверялся. Реальный Gemini вернул HTTP 400 из-за региона; API/генератор проверены с подставленными ответами, доступ модели остаётся внешней проверкой.
 
-## Что гарантирует выдача
+## Границы текущего MVP
 
-Сервис принимает `spec_id` и ключ идемпотентности, сам загружает согласованную версию и последний результат. Только общий сохранённый `PROPERTY_HOLDS` от TLC допускает генерацию. Поздняя переписка, результат старой версии или технический `success` runner не заменяют эту проверку.
+Сервис рассчитан на доверенную локальную разработку. Пользовательская авторизация и изоляция проектов ещё не реализованы. Жёсткое завершение worker может оставить задание `RUNNING`; автоматическое восстановление с lease/heartbeat — работа следующего спринта. Для повторной проверки можно создать новый запуск через API/UI. Нагрузочные ограничения и выполнение именно полученного от Gemini PySpark также остаются отдельными задачами.
 
-Сгенерированный Python не выполняется на сервере. `code_validation=not_performed` означает, что формальная проверка процесса не доказывает корректность полученного кода. Подключение к API/UI Вани и готовому парсеру Кирилла выполняется через описанный сервисный интерфейс.
+Единственный владелец схемы — Alembic. Миграция сохраняет данные первой версии Вани, но не выдумывает отсутствующие контексты и результаты старых проверок. Неверсионированная БД старого генератора отклоняется до DDL; её данные нужно переносить явно после резервного копирования. См. [интеграционный контракт](docs/integration.md), [ревью веток](docs/review-integration.md) и [подробности формального движка](docs/review-formal.md).

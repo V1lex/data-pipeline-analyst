@@ -1,3 +1,13 @@
+# Проверка общей интеграции — 01.11.2026
+
+216 passed, 7 skipped (6 Spark demonstrations, 1 live Gemini) with actual temporary PostgreSQL and Java/TLC. Locked uv workspace installs and runs tests. Ruff, frontend API error test, frontend build and Compose config pass. Wheel imports and migrations verified outside checkout.
+
+Live Gemini returned HTTP 400 due to region restriction. Full Docker startup was not performed because Docker daemon was stopped. See [integration review](review-integration.md) and current [README](../README.md) for canonical commands and scope.
+
+---
+
+Ниже сохранена история проверки отдельной ветки генератора на 30.10.2026; она не заменяет проверки общей интеграции.
+
 # Проверки реализации — 30 октября 2026
 
 ## Подтверждено
