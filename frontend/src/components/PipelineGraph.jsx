@@ -25,5 +25,5 @@ export default function PipelineGraph({ specification }) {
   });
   sinks.forEach(s => add(s.from_step, `sink:${s.id}`));
   if (!nodes.length) return <div className="graph-empty"><span>◇</span><strong>Здесь появится ваш конвейер</strong><p>Опишите источники, преобразования и ожидаемый результат в чате.</p></div>;
-  return <ReactFlow key={JSON.stringify(specification)} nodes={nodes} edges={edges} fitView fitViewOptions={{ padding: 0.22 }} nodesDraggable={false} nodesConnectable={false} elementsSelectable={true} minZoom={0.15} maxZoom={1.8} attributionPosition="bottom-right"><Background gap={20} color="#dce3ed"/><Controls showInteractive={false}/></ReactFlow>;
+  return <ReactFlow key={JSON.stringify(specification)} nodes={nodes} edges={edges} fitView fitViewOptions={{ padding: 0.22 }} nodesDraggable={false} nodesConnectable={false} elementsSelectable={false} nodesFocusable={false} edgesFocusable={false} deleteKeyCode={null} minZoom={0.15} maxZoom={1.8} attributionPosition="bottom-right"><Background gap={20} color="#dce3ed"/><Controls showInteractive={false}/></ReactFlow>;
 }

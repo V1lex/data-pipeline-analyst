@@ -1,0 +1,129 @@
+.pa-artifacts {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 12px;
+  width: 100%;
+  min-width: 0;
+  margin-top: 14px;
+  color: var(--pa-text, #292824);
+  font-family: inherit;
+}
+
+.pa-artifacts .pa-artifacts__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 10px;
+  max-width: 100%;
+}
+
+.pa-artifacts .pa-artifacts__action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 7px;
+  max-width: 100%;
+  min-height: 36px;
+  box-sizing: border-box;
+  padding: 6px 8px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 13px;
+  line-height: 1.45;
+  text-align: left;
+  overflow-wrap: anywhere;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  transition: background-color 120ms ease;
+}
+
+.pa-artifacts .pa-artifacts__verification {
+  color: #66645e;
+}
+
+.pa-artifacts .pa-artifacts__files {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 9px;
+  width: 100%;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.pa-artifacts .pa-artifacts__item {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.pa-artifacts .pa-artifacts__file {
+  display: flex;
+  align-items: center;
+  gap: 13px;
+  max-width: 100%;
+  min-height: 48px;
+  box-sizing: border-box;
+  padding: 11px 14px;
+  border: 1px solid var(--pa-line, #e4e2dc);
+  border-radius: 9px;
+  background: var(--pa-canvas, #faf9f6);
+  color: inherit;
+  font-size: 14px;
+  line-height: 1.5;
+  text-decoration: none;
+  -webkit-tap-highlight-color: transparent;
+  transition: background-color 120ms ease, border-color 120ms ease;
+}
+
+.pa-artifacts .pa-artifacts__filename {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.pa-artifacts .pa-artifacts__download {
+  margin-left: 6px;
+}
+
+.pa-artifacts svg {
+  flex: none;
+}
+
+.pa-artifacts .pa-artifacts__action:focus-visible,
+.pa-artifacts .pa-artifacts__file:focus-visible {
+  outline: 2px solid var(--pa-text, #292824);
+  outline-offset: 3px;
+}
+
+@media (hover: hover) {
+  .pa-artifacts .pa-artifacts__action:hover {
+    background: #efeee9;
+  }
+
+  .pa-artifacts .pa-artifacts__file:hover {
+    border-color: #c9c7bf;
+    background: var(--pa-surface, #fff);
+  }
+}
+
+@media (max-width: 600px) {
+  .pa-artifacts .pa-artifacts__action {
+    min-height: 44px;
+  }
+
+  .pa-artifacts .pa-artifacts__file {
+    gap: 10px;
+    padding: 11px 12px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pa-artifacts .pa-artifacts__action,
+  .pa-artifacts .pa-artifacts__file {
+    transition: none;
+  }
+}

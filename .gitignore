@@ -233,3 +233,6 @@ frontend/dist/
 
 # Frontend dependencies are installed from package-lock.json
 node_modules/
+
+frontend/test-results/
+frontend/playwright-report/
