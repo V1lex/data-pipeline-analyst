@@ -14,7 +14,7 @@
 - [x] Build API for projects, persistent chat, draft/build/approve versions, verification history, generation/download. Test complete HTTP flow against PostgreSQL with injected model responses and real worker.
 - [x] Add React/React Flow frontend and Compose/Dockerfiles; verify frontend build and browser scenario.
 - [x] Independent final review, regression suite, live Gemini attempt, documentation and coherent commits.
-- [ ] Only after integration: inspect Sfera, close tasks with evidence and add remaining sprint 3 tasks without duplicates.
+- [ ] Sfera: deferred by user after integration. Only MNTL-34/T28 was created in sprint 3; existing statuses unchanged. Remaining draft: docs/sprint-3-backlog-draft.md.
 
 ## Decisions
 Keep analyst as an importable package inside backend/src/agent and formal_check inside backend/src/compiler, preserving public team APIs while removing global src imports. Keep pipeline_spec as canonical shared contract. Evolve original DB migration rather than overwrite history. A new migration adopts uppercase generator statuses as text with explicit checks to avoid competing native enum vocabularies. Preserve legacy rows with missing context as inaccessible to generation. Session snapshots are persisted and concurrent requests serialized without holding a transaction during LLM calls.
@@ -28,3 +28,5 @@ Keep analyst as an importable package inside backend/src/agent and formal_check 
 - Gemini: one real request returned HTTP400 region restriction; user explicitly authorized assuming provider correctness for integration.
 - Ruling: use integration branch for review and move completed integration to dev, preserving main and all source branch histories.
 - Ruling: worker hard-crash recovery, authentication, CI/container startup and real LLM-generated Spark execution remain explicit sprint 3 work.
+
+- Sfera UI: verified MNTL-34 in sprint 3. User explicitly said «давай потом насчет сферы»; stopped all further Sfera actions.
