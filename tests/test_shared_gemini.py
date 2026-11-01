@@ -6,7 +6,6 @@ import pytest
 
 pytest.importorskip("google.genai")
 from google.genai import errors, types
-
 from pipeline_generator.errors import PipelineError
 from pipeline_generator.models import ModelPayload
 from pipeline_generator.shared_gemini import SharedGeminiClient
@@ -132,10 +131,9 @@ def test_actual_sdk_bad_response_is_sanitized_and_request_is_failed(repository, 
     from uuid import uuid4
 
     from google import genai
-    from test_storage import verified
-
     from pipeline_generator.generator import PySparkGenerator
     from pipeline_generator.service import GenerationService
+    from test_storage import verified
 
     _, spec, _ = verified(repository)
     request_id = uuid4()

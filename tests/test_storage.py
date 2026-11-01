@@ -7,11 +7,10 @@ import sys
 from pathlib import Path
 
 import pytest
-from psycopg import errors
-from test_generator import context
-
 from pipeline_generator.errors import PipelineError
 from pipeline_generator.storage import PostgresRepository
+from psycopg import errors
+from test_generator import context
 
 pytestmark = pytest.mark.postgres
 
@@ -173,7 +172,7 @@ print(repo.load_verified_context(UUID(os.environ['TEST_SPEC_ID'])).model_dump_js
         TEST_SCHEMA=repository.schema,
         TEST_SPEC_ID=str(spec),
     )
-    environment["PYTHONPATH"] = str(Path(__file__).resolve().parents[1] / "src")
+    environment["PYTHONPATH"] = str(Path(__file__).resolve().parents[1] / "backend" / "src")
     completed = subprocess.run(
         [sys.executable, "-c", script], env=environment, capture_output=True, text=True, check=True
     )

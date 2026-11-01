@@ -2,7 +2,6 @@ import json
 
 import httpx
 import pytest
-
 from pipeline_generator.errors import PipelineError
 from pipeline_generator.gemini import GeminiClient
 

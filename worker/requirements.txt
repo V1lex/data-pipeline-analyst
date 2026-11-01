@@ -1,0 +1,2 @@
+# Install from the repository root: pip install -r worker/requirements.txt
+-e ./backend

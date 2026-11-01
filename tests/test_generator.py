@@ -5,7 +5,6 @@ import traceback
 from uuid import UUID
 
 import pytest
-
 from pipeline_generator.errors import PipelineError
 from pipeline_generator.generator import PySparkGenerator
 from pipeline_generator.models import Completion, VerifiedContext

@@ -3,12 +3,11 @@ from concurrent.futures import ThreadPoolExecutor
 from uuid import uuid4
 
 import pytest
-from test_generator import FakeLlm, completion, response
-from test_storage import verified
-
 from pipeline_generator.errors import PipelineError
 from pipeline_generator.generator import PySparkGenerator
 from pipeline_generator.service import GenerationService
+from test_generator import FakeLlm, completion, response
+from test_storage import verified
 
 pytestmark = pytest.mark.postgres
 

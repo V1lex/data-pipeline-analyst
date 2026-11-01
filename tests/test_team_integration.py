@@ -4,9 +4,8 @@ import json
 from pathlib import Path
 
 import pytest
-from test_generator import context
-
 from pipeline_generator.errors import PipelineError
+from test_generator import context
 
 
 def test_legacy_context_hash_stays_stable():
@@ -27,8 +26,8 @@ def team_specification():
 
 def test_real_pipeline_and_checker_round_trip(repository):
     spec = team_specification()
-    analyst = pytest.importorskip("analyst.models")
-    output = pytest.importorskip("src.models.output")
+    analyst = pytest.importorskip("agent.analyst.models")
+    output = pytest.importorskip("compiler.formal_check.src.models.output")
     project = repository.create_project("Team contract test")
     reply = analyst.ChatMessage(role=analyst.Role.MODEL, content="Уточните схему")
     message = repository.add_message(project, reply.role, reply.content)
@@ -66,7 +65,7 @@ def test_real_pipeline_and_checker_round_trip(repository):
 
 
 def test_real_checker_json_is_accepted_without_changing_verdict(repository):
-    output = pytest.importorskip("src.models.output")
+    output = pytest.importorskip("compiler.formal_check.src.models.output")
     from test_storage import approved
 
     _, spec = approved(repository)

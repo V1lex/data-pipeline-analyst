@@ -224,3 +224,9 @@ __marimo__/
 
 # formal_check
 formal_check/models/
+worker/tla2tools.jar
+.superpowers/
+frontend/dist/
+
+# Commit workspace resolution for reproducible installs
+!uv.lock
