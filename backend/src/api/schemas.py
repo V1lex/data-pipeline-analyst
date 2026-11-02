@@ -11,6 +11,10 @@ class ProjectRequest(BaseModel):
     description: str = ""
 
 
+class ProjectRenameRequest(BaseModel):
+    name: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=200)]
+
+
 class MessageRequest(BaseModel):
     content: Annotated[
         str, StringConstraints(strip_whitespace=True, min_length=1, max_length=30000)

@@ -58,7 +58,7 @@ export default function App() {
   const inspectorProps = {state,view,onBuild:build,onApprove:() => void store.versionAction('approve'),onVerify:verify,onGenerate:generate,onOpenVerification:() => openDrawer('verification'),onOpenSchema:() => openDrawer('schema')};
   return <div className={`pa-app${drawer ? ' pa-app--drawer-open' : ''}`}>
     <div className="pa-navigation-host" inert={drawer && narrowDrawer ? true : undefined} aria-hidden={drawer && narrowDrawer ? true : undefined}>
-      <Navigation projects={state.projects} projectId={state.projectId} busy={state.busy} open={navigationOpen} onSelect={selectProject} onNew={newConversation} onClose={() => setNavigationOpen(false)}/>
+      <Navigation projects={state.projects} projectId={state.projectId} busy={state.busy} open={navigationOpen} onSelect={selectProject} onNew={newConversation} onClose={() => setNavigationOpen(false)} onRename={(id,name) => store.renameProject(id,name)} onDelete={async id => { const selected = state.projectId === id; const deleted = await store.deleteProject(id); if (deleted && selected) setDrawer(null); return deleted; }}/>
     </div>
     <main className="pa-main" inert={modal ? true : undefined} aria-hidden={modal ? true : undefined}>
       <header className="pa-topbar">

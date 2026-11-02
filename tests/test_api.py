@@ -210,3 +210,91 @@ def test_concurrent_first_requests_share_one_provider(repository, monkeypatch):
         assert all(reply.status_code == 200 for reply in replies)
         assert len(created) == 1
     assert len(closed) == 1
+
+
+def test_rename_project_persists_without_changing_history(app_client):
+    client = app_client
+    pid = client.post("/api/v1/projects", json={"name": "Old"}).json()["id"]
+    client.post(f"/api/v1/projects/{pid}/messages", json={"content": "Orders"})
+    client.post(f"/api/v1/projects/{pid}/specifications/build")
+    before = client.get(f"/api/v1/projects/{pid}").json()
+    response = client.patch(f"/api/v1/projects/{pid}", json={"name": "  Новое название  "})
+    assert response.status_code == 200, response.text
+    after = client.get(f"/api/v1/projects/{pid}").json()
+    assert after["name"] == "Новое название"
+    assert after["messages"] == before["messages"]
+    assert after["analyst"] == before["analyst"]
+    assert after["specifications"] == before["specifications"]
+    assert client.get("/api/v1/projects").json()[0]["name"] == "Новое название"
+
+
+def test_project_management_validates_names_and_missing_ids(app_client):
+    pid = app_client.post("/api/v1/projects", json={"name": "Original"}).json()["id"]
+    for name in ["   ", "a" * 201]:
+        assert app_client.patch(f"/api/v1/projects/{pid}", json={"name": name}).status_code == 422
+    missing = uuid4()
+    assert (
+        app_client.patch(f"/api/v1/projects/{missing}", json={"name": "Valid"}).status_code == 404
+    )
+    assert app_client.delete(f"/api/v1/projects/{missing}").status_code == 404
+    assert app_client.get(f"/api/v1/projects/{pid}").json()["name"] == "Original"
+
+
+def test_delete_project_cascades_saved_history_and_leaves_other_chats(app_client, repository):
+    from worker.src.runner import process_one
+
+    client = app_client
+    pid = client.post("/api/v1/projects", json={"name": "Delete this"}).json()["id"]
+    other = client.post("/api/v1/projects", json={"name": "Keep this"}).json()["id"]
+    client.post(f"/api/v1/projects/{pid}/messages", json={"content": "Orders"})
+    sid = client.post(f"/api/v1/projects/{pid}/specifications/build").json()["id"]
+    client.post(f"/api/v1/specifications/{sid}/approve")
+    client.post(f"/api/v1/specifications/{sid}/verify")
+    assert process_one(repository)
+    saved = client.post(f"/api/v1/specifications/{sid}/generate", json={"request_id": str(uuid4())})
+    assert saved.status_code == 200, saved.text
+    run = client.get(f"/api/v1/specifications/{sid}").json()["verifications"][0]
+    with repository.connect() as connection:
+        connection.execute(
+            "INSERT INTO property_results(id,run_id,property_id,status) VALUES (%s,%s,%s,%s)",
+            (uuid4(), run["id"], "cascade_test", "PROPERTY_HOLDS"),
+        )
+    deleted = client.delete(f"/api/v1/projects/{pid}")
+    assert deleted.status_code == 200, deleted.text
+    assert client.get(f"/api/v1/projects/{pid}").status_code == 404
+    assert client.get(f"/api/v1/specifications/{sid}").status_code == 404
+    assert (
+        client.get(
+            f"/api/v1/specifications/{sid}/artifacts/{saved.json()['artifact_id']}"
+        ).status_code
+        == 404
+    )
+    assert [p["id"] for p in client.get("/api/v1/projects").json()] == [other]
+    with repository.connect() as connection:
+        for table in [
+            "messages",
+            "specifications",
+            "verification_runs",
+            "property_results",
+            "artifacts",
+        ]:
+            assert connection.execute(f"SELECT count(*) AS n FROM {table}").fetchone()["n"] == 0
+
+
+def test_deleting_project_during_worker_check_discards_result(app_client, repository):
+    from worker.src.runner import process_one
+
+    client = app_client
+    pid = client.post("/api/v1/projects", json={"name": "In flight"}).json()["id"]
+    client.post(f"/api/v1/projects/{pid}/messages", json={"content": "Orders"})
+    sid = client.post(f"/api/v1/projects/{pid}/specifications/build").json()["id"]
+    client.post(f"/api/v1/specifications/{sid}/approve")
+    client.post(f"/api/v1/specifications/{sid}/verify")
+
+    def checker(data):
+        assert client.delete(f"/api/v1/projects/{pid}").status_code == 200
+        return {"status": "PROPERTY_HOLDS", "engine": "TLC", "statistics": {}}
+
+    assert process_one(repository, checker=checker)
+    assert client.get(f"/api/v1/projects/{pid}").status_code == 404
+    assert repository.claim_verification() is None

@@ -82,3 +82,73 @@ test('provider error preserves first-turn draft and retry does not create anothe
   await expect(page.locator('.pa-navigation__project[aria-current="page"]')).toHaveText(selected);
   await expect(page.locator('.pa-conversation__message--user')).toHaveCount(1);
 });
+
+test('sidebar rename persists, delete needs confirmation, and typing has one rounded focus border',async({page})=>{
+  await prepare(page);
+  await page.keyboard.press('Escape');
+  const selected=page.locator('.pa-navigation__project[aria-current="page"]');
+  const oldName=(await selected.textContent()).trim();
+  await selected.locator('..').getByRole('button',{name:`Действия диалога ${oldName}`,exact:true}).click();
+  await page.getByRole('button',{name:'Переименовать',exact:true}).click();
+  await page.getByRole('textbox',{name:'Название диалога',exact:true}).fill('Новый заголовок');
+  await page.getByRole('button',{name:'Сохранить',exact:true}).click();
+  await expect(selected).toHaveText('Новый заголовок');
+  await page.reload();
+  await expect(page.locator('.pa-conversation-title')).toHaveText('Новый заголовок');
+  const text=page.getByRole('textbox',{name:'Сообщение аналитику'});
+  await text.fill('Ещё сообщение');
+  await expect(text).toBeFocused();
+  expect(await text.evaluate(el=>getComputedStyle(el).outlineStyle)).toBe('none');
+  expect(await page.locator('.pa-conversation__composer').evaluate(el=>getComputedStyle(el).outlineStyle)).toBe('none');
+  await screenshot(page,'chat-management-composer.png');
+  await page.getByRole('button',{name:'Действия диалога Новый заголовок',exact:true}).click();
+  await page.getByRole('button',{name:'Удалить',exact:true}).click();
+  await screenshot(page,'chat-management-confirm.png');
+  await page.getByRole('button',{name:'Отмена',exact:true}).click();
+  await expect(selected).toHaveText('Новый заголовок');
+  await page.getByRole('button',{name:'Действия диалога Новый заголовок',exact:true}).click();
+  await page.getByRole('button',{name:'Удалить',exact:true}).click();
+  await page.getByRole('button',{name:'Удалить диалог',exact:true}).click();
+  await expect(page.getByRole('heading',{name:'С чего начнём?'})).toBeVisible();
+  await expect(page.locator('.pa-navigation__project').filter({hasText:'Новый заголовок'})).toHaveCount(0);
+  await page.reload();
+  await expect(page.getByRole('heading',{name:'С чего начнём?'})).toBeVisible();
+  await expect(page.locator('.pa-navigation__project').filter({hasText:'Новый заголовок'})).toHaveCount(0);
+});
+
+test('typing focus uses the rounded composer without nested rectangles',async({page})=>{
+  await page.goto('/');
+  const text=page.getByRole('textbox',{name:'Сообщение аналитику'});
+  await text.fill('Текст в поле');
+  expect(await text.evaluate(el=>getComputedStyle(el).outlineStyle)).toBe('none');
+  expect(await page.locator('.pa-conversation__composer').evaluate(el=>getComputedStyle(el).outlineStyle)).toBe('none');
+});
+
+test('mobile rename failure keeps the form accessible and Escape cancels without closing history',async({page})=>{
+  await page.setViewportSize({width:390,height:844});
+  await prepare(page);
+  await page.keyboard.press('Escape');
+  await page.getByRole('button',{name:'Открыть историю диалогов'}).click();
+  const history=page.getByRole('dialog',{name:'Pipeline',exact:true});
+  const name=(await history.locator('.pa-navigation__project[aria-current="page"]').textContent()).trim();
+  await history.locator('.pa-navigation__project[aria-current="page"]').locator('..').getByRole('button',{name:`Действия диалога ${name}`,exact:true}).click();
+  await history.getByRole('button',{name:'Переименовать',exact:true}).click();
+  const title=history.getByRole('textbox',{name:'Название диалога',exact:true});
+  await title.fill('Переименовать на телефоне');
+  await page.route('**/api/v1/projects/*',route=>route.request().method()==='PATCH' ? route.fulfill({status:503,contentType:'application/json',body:JSON.stringify({error:{code:'STORAGE_ERROR',message:'Сохранение недоступно'}})}) : route.continue());
+  await history.getByRole('button',{name:'Сохранить',exact:true}).click();
+  await expect(history.getByRole('alert')).toBeVisible();
+  await expect(title).toHaveValue('Переименовать на телефоне');
+  await page.keyboard.press('Escape');
+  await expect(title).not.toBeVisible();
+  await expect(history).toBeVisible();
+  await expect(history.locator('.pa-navigation__project[aria-current="page"]').locator('..').getByRole('button',{name:`Действия диалога ${name}`,exact:true})).toBeFocused();
+  await page.unroute('**/api/v1/projects/*');
+  await history.locator('.pa-navigation__project[aria-current="page"]').locator('..').getByRole('button',{name:`Действия диалога ${name}`,exact:true}).click();
+  await history.getByRole('button',{name:'Переименовать',exact:true}).click();
+  await history.getByRole('textbox',{name:'Название диалога',exact:true}).fill('Мобильный диалог');
+  await history.getByRole('button',{name:'Сохранить',exact:true}).click();
+  await expect(history.locator('.pa-navigation__project[aria-current="page"]')).toHaveText('Мобильный диалог');
+  await screenshot(page,'chat-management-mobile.png');
+  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+});

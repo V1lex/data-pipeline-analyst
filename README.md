@@ -42,6 +42,14 @@ docker compose --env-file .env -f infra/docker-compose.yml up --build
 - OpenAPI: <http://localhost:8000/docs>
 - Проверка готовности БД и API: <http://localhost:8000/api/v1/health>
 
+Остановка из корня проекта (сохранённая БД остаётся в Docker volume):
+
+```sh
+docker compose --env-file .env -f infra/docker-compose.yml down
+```
+
+Compose-файл лежит в `infra`, поэтому команда `docker compose down` без `-f` из корня его не найдёт. Локальные `uvicorn` и Vite, запущенные вне Docker, останавливаются через `Ctrl+C` в своих терминалах; Compose ими не управляет.
+
 ## Разработка без Docker
 
 Python 3.12+, PostgreSQL и Java 8+; Spark требуется только для отдельных демонстраций. Python-зависимости принадлежат `backend/pyproject.toml`, корень — uv workspace.
@@ -66,14 +74,14 @@ Vite открывается на <http://127.0.0.1:5173> и проксирует
 
 ## Новый разговорный интерфейс
 
-Основной экран — диалог. Первый отправленный запрос создаёт проект; последние диалоги доступны в боковой истории. «Схема» и «Файлы» открывают контекстные панели со спецификацией, согласованием, проверкой и артефактами выбранной версии. После перезагрузки открывается последний выбранный диалог.
+Основной экран — диалог. Первый отправленный запрос создаёт проект; последние диалоги доступны в боковой истории. «Схема» и «Файлы» открывают контекстные панели со спецификацией, согласованием, проверкой и артефактами выбранной версии. После перезагрузки открывается последний выбранный диалог. Меню `⋯` у чата позволяет переименовать его или удалить с подтверждением. Удаление убирает сообщения, все версии, результаты проверок и файлы этого чата; остальные диалоги сохраняются.
 
 Профиль пока один: статичный `user`, без аккаунтов и входа. Авторизация остаётся отдельной задачей. Дизайн и подтверждение пользователя: `frontend/src/workspace-v4/landing.json`; принятый макет — `layout/full-page-v2.png`.
 
 Для автоматического браузерного сценария без обращения к Gemini нужны отдельная тестовая PostgreSQL, Java/TLC и dev-зависимости. В трёх терминалах:
 
 ```sh
-TEST_DATABASE_URL='postgresql://user:password@localhost/test_database' uv run python tests/browser_preview.py
+PYTHONPATH=. TEST_DATABASE_URL='postgresql://user:password@localhost/test_database' uv run python tests/browser_preview.py
 DPA_API_TARGET=http://127.0.0.1:8001 npm run dev --prefix frontend -- --port 5174
 FRONTEND_E2E_URL=http://127.0.0.1:5174 PLAYWRIGHT_CHANNEL=chrome npm run test:e2e --prefix frontend
 ```

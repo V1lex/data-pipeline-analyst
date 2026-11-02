@@ -23,6 +23,7 @@ export class WorkspaceController {
     this.listeners = new Set();
     this.projectRead = 0;
     this.projectsRevision = 0;
+    this.deletedProjectIds = new Set();
     this.specRead = 0;
     this.generationIds = new Map();
     this.state = {
@@ -43,7 +44,8 @@ export class WorkspaceController {
     const revision = this.projectsRevision;
     try {
       const received = await this.api('/projects');
-      const projects = revision === this.projectsRevision ? received : [...new Map([...this.state.projects, ...received].map(project => [project.id, project])).values()];
+      const projects = (revision === this.projectsRevision ? received : [...new Map([...received, ...this.state.projects].map(project => [project.id, project])).values()])
+        .filter(project => !this.deletedProjectIds.has(project.id));
       this._set({ projects });
       let previous;
       try { previous = restore && this.storage?.getItem(SELECTION_KEY); } catch { /* optional local selection */ }
@@ -53,6 +55,7 @@ export class WorkspaceController {
   async selectProject(id) {
     if (this.state.busy) return;
     const read = ++this.projectRead;
+    const revision = this.projectsRevision;
     ++this.specRead;
     this._remember(id);
     this._set({ projectId: id, project: null, specId: null, spec: null, generated: null,
@@ -61,6 +64,10 @@ export class WorkspaceController {
     try {
       const project = await this.api(`/projects/${id}`);
       if (read !== this.projectRead) return;
+      if (revision !== this.projectsRevision) {
+        const current = this.state.projects.find(item => item.id === id);
+        if (current) project.name = current.name;
+      }
       this._set({ project, loadingProject: false });
       await this.selectSpecification(project.specifications?.at(-1)?.id || null);
     } catch (error) {
@@ -68,6 +75,39 @@ export class WorkspaceController {
     }
   }
   newConversation() { if (!this.state.busy) void this.selectProject(null); }
+  async renameProject(id, name) {
+    name = name.trim();
+    if (!name || name.length > 200) {
+      this._set({ error: 'Название должно содержать от 1 до 200 символов.' });
+      return false;
+    }
+    return Boolean(await this._perform('Сохраняем название…', async () => {
+      const renamed = await this.api(`/projects/${id}`, { method: 'PATCH', body: { name } });
+      ++this.projectsRevision;
+      this._set({
+        projects: this.state.projects.map(project => project.id === id ? { ...project, name: renamed.name } : project),
+        project: this.state.project?.id === id ? { ...this.state.project, name: renamed.name } : this.state.project,
+      });
+      return true;
+    }));
+  }
+  async deleteProject(id) {
+    return Boolean(await this._perform('Удаляем диалог…', async () => {
+      await this.api(`/projects/${id}`, { method: 'DELETE' });
+      ++this.projectsRevision;
+      this.deletedProjectIds.add(id);
+      const patch = { projects: this.state.projects.filter(project => project.id !== id) };
+      if (this.state.projectId === id) {
+        ++this.projectRead;
+        ++this.specRead;
+        this._remember(null);
+        Object.assign(patch, { projectId: null, project: null, specId: null, spec: null,
+          generated: null, text: '', pendingMessage: null, loadingProject: false, loadingSpec: false });
+      }
+      this._set(patch);
+      return true;
+    }));
+  }
   async selectSpecification(id) {
     const read = ++this.specRead;
     const projectId = this.state.projectId;

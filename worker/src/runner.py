@@ -7,6 +7,7 @@ from threading import Event
 
 from compiler.formal_check.src.services.checker import check_model
 from dotenv import load_dotenv
+from pipeline_generator.errors import PipelineError
 from pipeline_generator.storage import PostgresRepository
 
 logger = logging.getLogger(__name__)
@@ -18,6 +19,12 @@ def process_one(repository, checker=check_model) -> bool:
         return False
     try:
         specification = repository.get_specification(run["spec_id"])
+    except PipelineError as exc:
+        if exc.code == "NOT_FOUND":
+            logger.info("Discarding verification %s: its project was deleted", run["id"])
+            return True
+        raise
+    try:
         result = checker(specification["spec_json"])
     except Exception as exc:
         logger.exception("Verification job %s failed", run["id"])
@@ -26,7 +33,12 @@ def process_one(repository, checker=check_model) -> bool:
             "engine": "TLC",
             "error": f"Verification worker failed: {type(exc).__name__}: {exc}",
         }
-    repository.finish_verification(run["id"], result)
+    try:
+        repository.finish_verification(run["id"], result)
+    except PipelineError as exc:
+        if exc.code != "NOT_FOUND":
+            raise
+        logger.info("Discarding verification %s: its project was deleted", run["id"])
     return True
 
 

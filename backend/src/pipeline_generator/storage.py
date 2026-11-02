@@ -61,6 +61,29 @@ class PostgresRepository:
                 connection.execute("SELECT * FROM projects WHERE id=%s", (project_id,)).fetchone()
             )
 
+    def rename_project(self, project_id: UUID, name: str) -> dict:
+        name = name.strip()
+        if not name or len(name) > 200:
+            raise PipelineError(
+                "CONTEXT_REQUIRED", "Название должно содержать от 1 до 200 символов."
+            )
+        with self.connect() as connection:
+            return _found(
+                connection.execute(
+                    "UPDATE projects SET name=%s WHERE id=%s RETURNING id,name",
+                    (name, project_id),
+                ).fetchone()
+            )
+
+    def delete_project(self, project_id: UUID) -> None:
+        # Foreign keys cascade to messages, versions, runs, properties and files.
+        with self.connect() as connection:
+            _found(
+                connection.execute(
+                    "DELETE FROM projects WHERE id=%s RETURNING id", (project_id,)
+                ).fetchone()
+            )
+
     def add_message(self, project_id: UUID, role: str, content: str) -> UUID:
         role = "assistant" if role == "model" else role
         if role not in {"user", "assistant", "system"} or not content.strip():

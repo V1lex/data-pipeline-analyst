@@ -180,3 +180,79 @@ test('a delayed project list preserves conversations created while the list was 
   await loading;
   assert.deepEqual(new Set(store.getSnapshot().projects.map(p=>p.id)),new Set(['p1','older']));
 });
+
+test('rename updates persisted selected title without replacing its messages or version', async () => {
+  const db=backend();
+  db.projects.push({id:'p1',name:'Old',messages:[{id:'m1',content:'Keep me'}],specifications:[{id:'s1'}]});
+  db.specs.set('s1',verified());
+  const api=async(path,options)=>{
+    if(path==='/projects/p1' && options?.method==='PATCH') { db.projects[0].name=options.body.name; return {id:'p1',name:options.body.name}; }
+    return db.api(path,options);
+  };
+  const store=new WorkspaceController({api});
+  await store.loadProjects(); await store.selectProject('p1');
+  assert.equal(await store.renameProject('p1','  New  '),true);
+  assert.equal(store.getSnapshot().projects[0].name,'New');
+  assert.equal(store.getSnapshot().project.name,'New');
+  assert.equal(store.getSnapshot().project.messages[0].content,'Keep me');
+  assert.equal(store.getSnapshot().spec.id,'s1');
+});
+
+test('failed rename or delete keeps the saved conversation and draft intact', async () => {
+  const db=backend(); db.projects.push({id:'p1',name:'Old',messages:[],specifications:[]});
+  const api=(path,options)=>options?.method ? Promise.reject(new Error('Storage unavailable')) : db.api(path,options);
+  const store=new WorkspaceController({api});
+  await store.loadProjects(); await store.selectProject('p1'); store.setText('Unsent');
+  assert.equal(await store.renameProject('p1','New'),false);
+  assert.equal(await store.deleteProject('p1'),false);
+  assert.equal(store.getSnapshot().project.name,'Old');
+  assert.equal(store.getSnapshot().projects.length,1);
+  assert.equal(store.getSnapshot().text,'Unsent');
+});
+
+test('delete current conversation clears its selection, version, draft and local restore key', async () => {
+  const db=backend(); db.projects.push({id:'p1',name:'P',messages:[],specifications:[{id:'s1'}]}); db.specs.set('s1',verified());
+  const values=new Map(); const storage={setItem:(k,v)=>values.set(k,v),getItem:k=>values.get(k),removeItem:k=>values.delete(k)};
+  const api=(path,options)=>options?.method==='DELETE' ? Promise.resolve({id:'p1'}) : db.api(path,options);
+  const store=new WorkspaceController({api,storage});
+  await store.loadProjects(); await store.selectProject('p1'); store.setText('old draft');
+  assert.equal(await store.deleteProject('p1'),true);
+  const state=store.getSnapshot();
+  assert.equal(state.projectId,null); assert.equal(state.project,null); assert.equal(state.spec,null);
+  assert.equal(state.projects.length,0); assert.equal(state.text,''); assert.equal(values.size,0);
+});
+
+test('stale project lists cannot resurrect deleted chats or undo a rename', async () => {
+  const db=backend(); db.projects.push({id:'p1',name:'Old',messages:[],specifications:[]},{id:'p2',name:'Remove'});
+  const slow=deferred(); let delay=false;
+  const api=(path,options)=>{
+    if(options?.method==='PATCH') return Promise.resolve({id:'p1',name:options.body.name});
+    if(options?.method==='DELETE') return Promise.resolve({id:'p2'});
+    if(path==='/projects' && delay) return slow.promise;
+    return db.api(path,options);
+  };
+  const store=new WorkspaceController({api});
+  await store.loadProjects(); await store.selectProject('p1'); store.setText('Keep draft');
+  delay=true; const loading=store.loadProjects();
+  await store.renameProject('p1','Renamed'); await store.deleteProject('p2');
+  slow.resolve([{id:'p1',name:'Old'},{id:'p2',name:'Remove'}]); await loading;
+  assert.deepEqual(store.getSnapshot().projects.map(p=>[p.id,p.name]),[['p1','Renamed']]);
+  assert.equal(store.getSnapshot().text,'Keep draft'); assert.equal(store.getSnapshot().projectId,'p1');
+});
+
+test('rename during a pending conversation read cannot restore the old title', async () => {
+  const read=deferred();
+  const api=(path,options)=>{
+    if(path==='/projects') return Promise.resolve([{id:'p1',name:'Old'}]);
+    if(options?.method==='PATCH') return Promise.resolve({id:'p1',name:'Renamed'});
+    return read.promise;
+  };
+  const store=new WorkspaceController({api});
+  await store.loadProjects();
+  const loading=store.selectProject('p1');
+  await store.renameProject('p1','Renamed');
+  read.resolve({id:'p1',name:'Old',messages:[],specifications:[]});
+  await loading;
+  assert.equal(store.getSnapshot().project.name,'Renamed');
+  assert.equal(store.getSnapshot().loadingProject,false);
+});

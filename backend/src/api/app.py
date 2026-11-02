@@ -17,7 +17,7 @@ from pipeline_generator.generator import PySparkGenerator
 from pipeline_generator.service import GenerationService
 from pipeline_generator.storage import PostgresRepository
 
-from api.schemas import GenerationRequest, MessageRequest, ProjectRequest
+from api.schemas import GenerationRequest, MessageRequest, ProjectRenameRequest, ProjectRequest
 
 logger = logging.getLogger(__name__)
 ROOT = Path(__file__).resolve().parents[3]
@@ -139,6 +139,15 @@ def create_app(*, repository=None, analyst_client=None, builder=None, generation
             "messages": repo().list_messages(project_id),
             "specifications": repo().list_specifications(project_id),
         }
+
+    @app.patch("/api/v1/projects/{project_id}")
+    def rename_project(project_id: UUID, body: ProjectRenameRequest):
+        return repo().rename_project(project_id, body.name)
+
+    @app.delete("/api/v1/projects/{project_id}")
+    def delete_project(project_id: UUID):
+        repo().delete_project(project_id)
+        return {"id": project_id}
 
     @app.post("/api/v1/projects/{project_id}/messages")
     def send(project_id: UUID, body: MessageRequest):
