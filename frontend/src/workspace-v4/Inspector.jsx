@@ -3,7 +3,7 @@ import PipelineGraph from '../components/PipelineGraph.jsx';
 import { artifactUrl } from '../api/client.js';
 import { Icon } from './icons.jsx';
 
-const names = { DRAFT: 'На согласовании', APPROVED: 'Согласована', QUEUED: 'В очереди', RUNNING: 'Проверяется', PROPERTY_HOLDS: 'Модель проверена', PROPERTY_VIOLATED: 'Найдено нарушение', MODEL_INVALID: 'Нужно исправить модель', TIMEOUT: 'Проверка не завершилась вовремя', ENGINE_ERROR: 'Ошибка проверки', INFRASTRUCTURE_ERROR: 'Проверка недоступна', STATE_LIMIT_REACHED: 'Достигнут лимит состояний' };
+const names = { DRAFT: 'На согласовании', APPROVED: 'Согласована', QUEUED: 'В очереди', RUNNING: 'Проверяется', PROPERTY_HOLDS: 'Модель проверена', PROPERTY_VIOLATED: 'Найдено нарушение', PROPERTY_UNREACHABLE: 'Состояние недостижимо', MODEL_INVALID: 'Нужно исправить модель', TIMEOUT: 'Проверка не завершилась вовремя', INFRASTRUCTURE_ERROR: 'Проверка недоступна', STATE_LIMIT_REACHED: 'Достигнут лимит состояний' };
 export const statusLabel = status => names[status] || status || '';
 
 export function VersionPicker({ state, onSelect }) {

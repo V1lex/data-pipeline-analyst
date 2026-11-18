@@ -1,7 +1,6 @@
 from pipeline_spec.models import (
     DataConstraint,
     DatasetSchema,
-    PipelineFormalModel,
     PipelineMetadata,
     PipelineOperation,
     PipelineSpecification,
@@ -19,5 +18,4 @@ __all__ = [
     "PipelineOperation",
     "DatasetSchema",
     "DataConstraint",
-    "PipelineFormalModel",
 ]

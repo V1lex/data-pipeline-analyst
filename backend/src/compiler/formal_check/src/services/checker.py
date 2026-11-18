@@ -1,134 +1,78 @@
-"""Overall verification boundary used by the persistent worker."""
+"""Thin pipeline composition for formal-check stages."""
 
-import json
 import math
 import tempfile
-import time
 from pathlib import Path
 
-from compiler.formal_check.src.models.input import PropertyType
 from compiler.formal_check.src.models.models import Status
 from compiler.formal_check.src.models.output import ModelInvalid
 from compiler.formal_check.src.services.compiler import compile_input
 from compiler.formal_check.src.services.parser import parse_tlc_output
-from compiler.formal_check.src.services.runner import run_tlc
+from compiler.formal_check.src.services.runner import run_tlc, run_tlc_batch
 from compiler.formal_check.src.services.validator import validate_input
 
 
-def check_model(data: dict, *, jar_path=None, timeout: float = 30) -> dict:
-    """Check safety, then each existential reachability query within one time budget.
-
-    Reachability is implemented by checking the invariant ``not target``. Its
-    counterexample is an existential witness; exhaustion proves unreachability.
-    No intermediate engine status or progress message authorizes generation.
-    """
+def check_model(
+    data: dict,
+    *,
+    jar_path=None,
+    timeout: float = 30,
+    output_dir: Path | str | None = None,
+) -> dict:
+    """Compose validator -> compiler -> runner -> parser as a transparent pipeline."""
     model = validate_input(data)
     if isinstance(model, ModelInvalid):
-        return model.model_dump(mode="json")
+        return {
+            "validation": model.model_dump(mode="json"),
+            "compilation": None,
+            "runner": None,
+            "parsed": [],
+        }
     if not isinstance(timeout, int | float) or not math.isfinite(timeout) or timeout <= 0:
-        return _error("ENGINE_ERROR", "TLC timeout must be a positive finite number")
-    deadline = time.monotonic() + timeout
-    checked_properties = []
-    diagnostics = []
-    try:
-        with tempfile.TemporaryDirectory(prefix="formal_check_") as tmpdir:
-            directory = Path(tmpdir)
-            compile_input(model, output_dir=directory)
-            configurations = [(directory / "safety.cfg", None)]
-            configurations.extend(
-                (directory / "reachable" / f"{prop.id}.cfg", prop)
-                for prop in model.properties
-                if prop.type is PropertyType.REACHABLE
-            )
-            statistics = None
-            for config_path, reachable in configurations:
-                remaining = deadline - time.monotonic()
-                if remaining <= 0:
-                    return _error(
-                        "TIMEOUT", "Overall TLC verification time budget exhausted", diagnostics
-                    )
-                output = run_tlc(
-                    timeout=remaining,
-                    model_path=directory / "model.tla",
-                    config_path=config_path,
-                    jar_path=jar_path,
-                )
-                diagnostics.append(
+        return {
+            "validation": model.model_dump(mode="json"),
+            "compilation": None,
+            "runner": {
+                "status": "invalid_timeout",
+                "error": "TLC timeout must be a positive finite number",
+            },
+            "parsed": [],
+        }
+
+    def run(directory: Path) -> dict:
+        compilation = compile_input(model, output_dir=directory)
+        configs = [compilation.safety_config_path]
+        configs.extend(compilation.reachable_config_paths.values())
+        batch = run_tlc_batch(
+            compilation.model_path,
+            configs,
+            timeout=timeout,
+            jar_path=jar_path,
+            run_tlc_fn=run_tlc,
+        )
+        parsed = []
+        for config_path, output in zip(configs, batch.outputs, strict=False):
+            if output.status is Status.SUCCESS:
+                parsed.append(
                     {
                         "configuration": config_path.name,
-                        "exit_code": output.exit_code,
-                        "stdout": output.stdout,
-                        "stderr": output.stderr,
+                        **parse_tlc_output(
+                            output.stdout,
+                            model.variables,
+                        ).model_dump(mode="json"),
                     }
                 )
-                if output.status is not Status.SUCCESS:
-                    statuses = {
-                        Status.TIMEOUT: "TIMEOUT",
-                        Status.INFRASTRUCTURE_ERROR: "INFRASTRUCTURE_ERROR",
-                    }
-                    return _error(
-                        statuses.get(output.status, "ENGINE_ERROR"),
-                        output.stderr or "TLC execution failed",
-                        diagnostics,
-                    )
-                result = json.loads(parse_tlc_output(output.stdout, model.variables))
-                if result["status"] == "ENGINE_ERROR":
-                    return _error("ENGINE_ERROR", result["error"], diagnostics)
-                if result["status"] == "PROPERTY_VIOLATED" and result["property_id"] == "TypeOK":
-                    return {
-                        "status": "MODEL_INVALID",
-                        "engine": "TLC",
-                        "errors": [
-                            {
-                                "type": "OUT_OF_DOMAIN_VALUE",
-                                "location": "transitions",
-                                "message": "A reachable state violates a declared variable domain",
-                            }
-                        ],
-                        "counterexample": result["counterexample"],
-                        "diagnostics": diagnostics,
-                    }
-                if reachable is None:
-                    if result["status"] == "PROPERTY_VIOLATED":
-                        if result["property_id"] not in {
-                            p.id for p in model.properties if p.type is not PropertyType.REACHABLE
-                        }:
-                            return _error(
-                                "ENGINE_ERROR", "TLC reported an unexpected property", diagnostics
-                            )
-                        return {**result, "diagnostics": diagnostics}
-                    statistics = result["statistics"]
-                    checked_properties.extend(
-                        p.id for p in model.properties if p.type is not PropertyType.REACHABLE
-                    )
-                elif result["status"] == "PROPERTY_VIOLATED":
-                    if result["property_id"] != reachable.id:
-                        return _error(
-                            "ENGINE_ERROR",
-                            "Reachability run reported an unexpected property",
-                            diagnostics,
-                        )
-                    checked_properties.append(reachable.id)
-                else:
-                    return {
-                        "status": "PROPERTY_VIOLATED",
-                        "engine": "TLC",
-                        "property_id": reachable.id,
-                        "counterexample": {"steps": []},
-                        "statistics": result["statistics"],
-                        "error": "Target state is unreachable in the completely explored state graph",
-                        "diagnostics": diagnostics,
-                    }
-            return {
-                "status": "PROPERTY_HOLDS",
-                "engine": "TLC",
-                "statistics": statistics,
-                "checked_properties": checked_properties,
-                "diagnostics": diagnostics,
-            }
-    except (OSError, ValueError, TypeError) as exc:
-        return _error("ENGINE_ERROR", f"Verification failed: {exc}", diagnostics)
+        return {
+            "validation": model.model_dump(mode="json"),
+            "compilation": compilation.model_dump(mode="json"),
+            "runner": batch.model_dump(mode="json"),
+            "parsed": parsed,
+        }
 
+    if output_dir is not None:
+        directory = Path(output_dir)
+        directory.mkdir(parents=True, exist_ok=True)
+        return run(directory)
 
-def _error(status: str, message: str, diagnostics: list | None = None) -> dict:
-    return {"status": status, "engine": "TLC", "error": message, "diagnostics": diagnostics or []}
+    with tempfile.TemporaryDirectory(prefix="formal_check_") as tmpdir:
+        return run(Path(tmpdir))

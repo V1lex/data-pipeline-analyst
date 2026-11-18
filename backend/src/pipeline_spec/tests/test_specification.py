@@ -146,8 +146,6 @@ def test_example_ecommerce_json_validates():
     assert len(order) == 9
     assert order[-1] == "write_to_sales_mart"
 
-    # Check formal_model conversion to formal_check input
-    fc_input = spec.formal_model.to_formal_check_input()
-    assert len(fc_input.variables) == 3
-    assert len(fc_input.transitions) == 6
-    assert len(fc_input.properties) == 4
+    assert len(spec.formal_model["variables"]) == 3
+    assert len(spec.formal_model["transitions"]) == 6
+    assert len(spec.formal_model["properties"]) == 4

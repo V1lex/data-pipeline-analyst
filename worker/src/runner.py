@@ -13,6 +13,96 @@ from pipeline_generator.storage import PostgresRepository
 logger = logging.getLogger(__name__)
 
 
+def aggregate_verification(stage_result: dict) -> dict:
+    """Convert formal-check stage envelope to the stored worker verdict."""
+    validation = stage_result.get("validation") or {}
+    if validation.get("status") == "MODEL_INVALID":
+        return {
+            "status": "MODEL_INVALID",
+            "engine": "TLC",
+            "errors": validation.get("errors", []),
+        }
+
+    runner = stage_result.get("runner") or {}
+    outputs = runner.get("outputs", [])
+    for output in outputs:
+        status = output.get("status")
+        if status == "timeout":
+            return {
+                "status": "TIMEOUT",
+                "engine": "TLC",
+                "timeout_limit_seconds": stage_result.get("timeout"),
+                "error": output.get("stderr") or "TLC execution timed out",
+            }
+        if status == "state_limit_reached":
+            return {
+                "status": "STATE_LIMIT_REACHED",
+                "engine": "TLC",
+                "error": output.get("stderr") or "TLC state limit reached",
+            }
+        if status != "success":
+            return {
+                "status": "INFRASTRUCTURE_ERROR",
+                "engine": "TLC",
+                "error": output.get("stderr") or "TLC execution failed",
+            }
+
+    parsed = stage_result.get("parsed") or []
+    checked_properties = []
+    statistics = None
+
+    for item in parsed:
+        status = item.get("status")
+        if status == "INFRASTRUCTURE_ERROR":
+            return {
+                "status": "INFRASTRUCTURE_ERROR",
+                "engine": "TLC",
+                "error": item.get("error", "TLC output could not be parsed"),
+            }
+        if item.get("configuration") == "safety.cfg" and status == "PROPERTY_VIOLATED":
+            result = dict(item)
+            result.pop("configuration", None)
+            if result.get("property_id") == "_FormalCheckTypeOK":
+                return {
+                    "status": "MODEL_INVALID",
+                    "engine": "TLC",
+                    "errors": [
+                        {
+                            "type": "OUT_OF_DOMAIN_VALUE",
+                            "location": "transitions",
+                            "message": "A reachable state violates a declared variable domain",
+                        }
+                    ],
+                    "counterexample": result.get("counterexample"),
+                }
+            return result
+        if item.get("configuration") == "safety.cfg" and status == "PROPERTY_HOLDS":
+            statistics = item.get("statistics")
+        elif item.get("configuration", "").endswith(".cfg") and status == "PROPERTY_VIOLATED":
+            property_id = item.get("property_id")
+            if property_id:
+                checked_properties.append(property_id)
+        elif item.get("configuration", "").endswith(".cfg") and status == "PROPERTY_HOLDS":
+            property_id = item.get("configuration", "")[:-4]
+            if property_id:
+                return {
+                    "status": "PROPERTY_UNREACHABLE",
+                    "engine": "TLC",
+                    "property_id": property_id,
+                    "error": "Target state is unreachable",
+                    "statistics": item.get("statistics"),
+                }
+
+    if statistics is None:
+        statistics = {}
+    return {
+        "status": "PROPERTY_HOLDS",
+        "engine": "TLC",
+        "statistics": statistics,
+        "checked_properties": checked_properties,
+    }
+
+
 def process_one(repository, checker=check_model) -> bool:
     run = repository.claim_verification()
     if run is None:
@@ -25,11 +115,20 @@ def process_one(repository, checker=check_model) -> bool:
             return True
         raise
     try:
-        result = checker(specification["spec_json"])
+        stage_result = checker(specification["spec_json"])
+        if isinstance(stage_result, dict) and {
+            "validation",
+            "compilation",
+            "runner",
+            "parsed",
+        }.issubset(stage_result):
+            result = aggregate_verification(stage_result)
+        else:
+            result = stage_result
     except Exception as exc:
         logger.exception("Verification job %s failed", run["id"])
         result = {
-            "status": "ENGINE_ERROR",
+            "status": "INFRASTRUCTURE_ERROR",
             "engine": "TLC",
             "error": f"Verification worker failed: {type(exc).__name__}: {exc}",
         }

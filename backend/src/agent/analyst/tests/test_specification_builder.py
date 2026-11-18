@@ -67,12 +67,10 @@ def test_end_to_end_specification_generation_and_validation():
     order = spec.get_topological_order()
     assert order == ["step_read", "step_filter", "step_write"]
 
-    # Check formal_model is valid and convertible for formal_check
     assert spec.formal_model is not None
-    fc_input = spec.formal_model.to_formal_check_input()
-    assert len(fc_input.variables) == 1
-    assert len(fc_input.transitions) == 2
-    assert len(fc_input.properties) == 1
+    assert len(spec.formal_model["variables"]) == 1
+    assert len(spec.formal_model["transitions"]) == 2
+    assert len(spec.formal_model["properties"]) == 1
 
 
 def test_user_confirmation_summary_formatting():

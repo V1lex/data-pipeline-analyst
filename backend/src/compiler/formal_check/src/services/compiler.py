@@ -23,10 +23,15 @@ from compiler.formal_check.src.models.input import (
     VariableRef,
     VariableType,
 )
+from compiler.formal_check.src.models.models import CompilationResult
 from compiler.formal_check.src.services.strings import encode_string
 
 
-def compile_input(input_data: Input, *, output_dir: Path | str | None = None) -> None:
+def compile_input(
+    input_data: Input,
+    *,
+    output_dir: Path | str | None = None,
+) -> CompilationResult:
     directory = Path(output_dir) if output_dir is not None else MODEL_PATH.parent
     directory.mkdir(parents=True, exist_ok=True)
     model_path = directory / MODEL_PATH.name
@@ -55,14 +60,20 @@ def compile_input(input_data: Input, *, output_dir: Path | str | None = None) ->
                 domains.append(f"{variable.name} >= {variable.min}")
             if variable.max is not None:
                 domains.append(f"{variable.name} <= {variable.max}")
-    specification += "TypeOK == " + " /\\ ".join(f"({domain})" for domain in domains) + "\n\n"
+    specification += (
+        "_FormalCheckTypeOK == " + " /\\ ".join(f"({domain})" for domain in domains) + "\n\n"
+    )
 
-    specification += "Spec == Init /\\ [][Next]_vars\n===="
+    specification += "Spec == Init /\\ [][Next]_vars\n\n"
+    specification += "IsDAG == <>[][~Next]_vars\n\n"
+    specification += "===="
 
     with open(model_path, "w", encoding="utf-8") as f:
         f.write(specification)
 
-    config = "SPECIFICATION Spec\nCHECK_DEADLOCK FALSE\nINVARIANT TypeOK"
+    config = (
+        "SPECIFICATION Spec\nCHECK_DEADLOCK FALSE\nINVARIANT _FormalCheckTypeOK\nPROPERTY IsDAG"
+    )
 
     for prop in input_data.properties:
         if prop.type is not PropertyType.REACHABLE:
@@ -75,9 +86,18 @@ def compile_input(input_data: Input, *, output_dir: Path | str | None = None) ->
     for prop in input_data.properties:
         if prop.type is PropertyType.REACHABLE:
             (reachable_dir / f"{prop.id}.cfg").write_text(
-                f"SPECIFICATION Spec\nCHECK_DEADLOCK FALSE\nINVARIANT TypeOK\nINVARIANT {prop.id}\n",
+                f"SPECIFICATION Spec\nCHECK_DEADLOCK FALSE\nINVARIANT _FormalCheckTypeOK\nINVARIANT {prop.id}\n",
                 encoding="utf-8",
             )
+    return CompilationResult(
+        model_path=model_path,
+        safety_config_path=safety_path,
+        reachable_config_paths={
+            prop.id: reachable_dir / f"{prop.id}.cfg"
+            for prop in input_data.properties
+            if prop.type is PropertyType.REACHABLE
+        },
+    )
 
 
 def _compile_init(init: dict[str, str | bool | int]) -> str:

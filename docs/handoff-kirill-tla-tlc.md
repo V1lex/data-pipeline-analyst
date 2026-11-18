@@ -64,8 +64,8 @@ from compiler.formal_check.src.services.checker import check_model
 | `src/services/validator.py` | `src/services/validator.py` | Завершена семантическая проверка выражений, ссылок, присваиваний, доменов и имён | Существенно переработан |
 | `src/main.py` | `src/main.py` | Вместо двух фиксированных тестовых файлов — CLI с входным JSON, jar и timeout | Существенно изменён способ запуска |
 | `src/config.py` | `src/config.py` | `TLC_JAR_PATH` стал необязателен: добавлен путь по умолчанию к worker jar | Небольшая функциональная правка |
-| `src/models/models.py` | `src/models/models.py` | В технический `Status` добавлен `ENGINE_ERROR` | Небольшое расширение |
-| `src/models/output.py` | `src/models/output.py` | Добавлен `EngineError` с `status`, `engine`, `error` | Небольшое расширение |
+| `src/models/models.py` | `src/models/models.py` | В технический `Status` добавлен `INFRASTRUCTURE_ERROR` | Небольшое расширение |
+| `src/models/output.py` | `src/models/output.py` | Добавлен `InfrastructureError` с `status`, `engine`, `error` | Небольшое расширение |
 | `src/models/input.py` | `src/models/input.py` | Структура исходного формального DSL сохранена; изменения форматирования | Без изменения контракта DSL |
 | `tests/test_input_models.py` | `tests/test_input_models.py` | Импорт нового пакета и форматирование | Небольшая техническая правка |
 | `.python-version`, `log-config.yaml` | Те же файлы в новом каталоге | Перенесены без изменения содержимого | Только перенос |
@@ -133,8 +133,7 @@ from compiler.formal_check.src.services.checker import check_model
 Рабочий вход — [checker.py](../backend/src/compiler/formal_check/src/services/checker.py):
 
 ```python
-def check_model(data: dict, *, jar_path=None, timeout: float = 30) -> dict:
-    ...
+def check_model(data: dict, *, jar_path=None, timeout: float = 30) -> dict: ...
 ```
 
 `data` — формальный `Input`, не весь `PipelineSpecification`. Полный конвейер хранится отдельно и содержит формальную часть. `timeout` — общий бюджет всех запусков TLC в одном вызове, а не новый полный бюджет на каждое свойство.
@@ -158,7 +157,7 @@ def check_model(data: dict, *, jar_path=None, timeout: float = 30) -> dict:
 | `PROPERTY_VIOLATED` | Нарушено объявленное свойство либо не достигнута reachable-цель; указан `property_id` |
 | `MODEL_INVALID` | Структурная/семантическая ошибка или выход за домен; есть `errors` |
 | `TIMEOUT` | Проверка не уложилась во время; положительный вердикт не установлен |
-| `ENGINE_ERROR` | Некорректный вывод, ошибка движка или внутреннего выполнения проверки |
+| `INFRASTRUCTURE_ERROR` | Недоступность движка, некорректный вывод или ошибка внутреннего выполнения проверки |
 | `INFRASTRUCTURE_ERROR` | Нет jar/Java, JVM аварийно завершена либо другая ошибка окружения |
 
 `diagnostics` содержит сведения по отдельным запускам: `configuration`, `exit_code`, `stdout`, `stderr`. При успешной агрегации также есть `checked_properties`; статистика относится к safety-запуску, это не сумма статистик всех reachable-запусков.

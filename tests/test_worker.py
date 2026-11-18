@@ -43,7 +43,119 @@ def test_worker_finishes_unexpected_checker_exception_as_error():
         raise RuntimeError("engine crashed")
 
     assert process_one(repository, checker=check)
-    assert repository.saved[0][1]["status"] == "ENGINE_ERROR"
+    assert repository.saved[0][1]["status"] == "INFRASTRUCTURE_ERROR"
+
+
+def test_worker_aggregates_validation_stage_to_verdict():
+    from worker.src.runner import aggregate_verification
+
+    result = aggregate_verification(
+        {
+            "validation": {
+                "status": "MODEL_INVALID",
+                "engine": "TLC",
+                "errors": [
+                    {"type": "INVALID_INITIAL_VALUE", "location": "initial.x", "message": "bad"}
+                ],
+            },
+            "compilation": None,
+            "runner": None,
+            "parsed": [],
+        }
+    )
+    assert result["status"] == "MODEL_INVALID"
+    assert result["errors"][0]["location"] == "initial.x"
+
+
+def test_worker_aggregates_safety_reachability_and_temporal_results():
+    from worker.src.runner import aggregate_verification
+
+    result = aggregate_verification(
+        {
+            "validation": {"variables": []},
+            "compilation": {},
+            "runner": {
+                "outputs": [
+                    {"status": "success", "exit_code": 0, "stdout": "", "stderr": ""},
+                    {"status": "success", "exit_code": 0, "stdout": "", "stderr": ""},
+                ]
+            },
+            "parsed": [
+                {
+                    "configuration": "safety.cfg",
+                    "status": "PROPERTY_HOLDS",
+                    "engine": "TLC",
+                    "statistics": {"states_generated": 3, "distinct_states": 2, "depth": 2},
+                },
+                {
+                    "configuration": "P.cfg",
+                    "status": "PROPERTY_VIOLATED",
+                    "engine": "TLC",
+                    "property_id": "P",
+                    "counterexample": {"steps": []},
+                },
+            ],
+        }
+    )
+    assert result["status"] == "PROPERTY_HOLDS"
+    assert result["checked_properties"] == ["P"]
+    assert result["statistics"]["states_generated"] == 3
+
+
+def test_worker_aggregates_unreachable_property():
+    from worker.src.runner import aggregate_verification
+
+    result = aggregate_verification(
+        {
+            "validation": {"variables": []},
+            "compilation": {},
+            "runner": {
+                "outputs": [
+                    {"status": "success", "exit_code": 0},
+                    {"status": "success", "exit_code": 0},
+                ]
+            },
+            "parsed": [
+                {
+                    "configuration": "safety.cfg",
+                    "status": "PROPERTY_HOLDS",
+                    "engine": "TLC",
+                    "statistics": {"states_generated": 2, "distinct_states": 2, "depth": 2},
+                },
+                {
+                    "configuration": "P.cfg",
+                    "status": "PROPERTY_HOLDS",
+                    "engine": "TLC",
+                    "statistics": {"states_generated": 2, "distinct_states": 2, "depth": 2},
+                },
+            ],
+        }
+    )
+    assert result["status"] == "PROPERTY_UNREACHABLE"
+    assert result["property_id"] == "P"
+
+
+def test_worker_aggregates_isdag_violation():
+    from worker.src.runner import aggregate_verification
+
+    result = aggregate_verification(
+        {
+            "validation": {"variables": []},
+            "compilation": {},
+            "runner": {"outputs": [{"status": "success", "exit_code": 13}]},
+            "parsed": [
+                {
+                    "configuration": "safety.cfg",
+                    "status": "PROPERTY_VIOLATED",
+                    "engine": "TLC",
+                    "property_id": "IsDAG",
+                    "counterexample": {"steps": []},
+                }
+            ],
+        }
+    )
+    assert result["status"] == "PROPERTY_VIOLATED"
+    assert result["property_id"] == "IsDAG"
 
 
 @pytest.mark.postgres

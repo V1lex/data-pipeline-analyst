@@ -167,17 +167,6 @@ def create_app(*, repository=None, analyst_client=None, builder=None, generation
 
     @app.post("/api/v1/specifications/{spec_id}/approve")
     def approve(spec_id: UUID):
-        from compiler.formal_check.src.models.output import ModelInvalid
-        from validator import validate_input
-
-        record = repo().get_specification(spec_id)
-        validation = validate_input(record["spec_json"])
-        if isinstance(validation, ModelInvalid):
-            raise PipelineError(
-                "MODEL_INVALID",
-                "Исправьте ошибки модели перед согласованием.",
-                details={"errors": validation.model_dump(mode="json")["errors"]},
-            )
         repo().approve_specification(spec_id)
         return repo().get_specification(spec_id)
 

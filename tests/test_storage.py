@@ -107,7 +107,7 @@ def test_messages_from_another_project_cannot_enter_snapshot(repository):
         {"status": "MODEL_INVALID", "errors": [{"type": "BAD_MODEL", "message": "invalid"}]},
         {"status": "TIMEOUT", "engine": "TLC", "timeout_limit_seconds": 5.0},
         {"status": "STATE_LIMIT_REACHED", "engine": "TLC", "state_limit": 100},
-        {"status": "ENGINE_ERROR", "engine": "TLC", "error": "engine failed"},
+        {"status": "INFRASTRUCTURE_ERROR", "engine": "TLC", "error": "engine failed"},
         {"status": "INFRASTRUCTURE_ERROR", "engine": "TLC", "error": "infrastructure failed"},
     ],
 )
@@ -136,6 +136,25 @@ def test_only_reported_violated_property_and_trace_are_stored(repository):
     rows = repository.list_property_results(run)
     assert len(rows) == 1
     assert rows[0]["property_id"] == "P1"
+    assert rows[0]["counterexample"] == trace
+
+
+def test_internal_isdag_property_is_stored_as_violation(repository):
+    _, spec = approved(repository)
+    run = repository.enqueue_verification(spec)
+    trace = {"steps": [{"number": 0, "transition": None, "state": {"done": False}}]}
+    repository.finish_verification(
+        run,
+        {
+            "status": "PROPERTY_VIOLATED",
+            "engine": "TLC",
+            "property_id": "IsDAG",
+            "counterexample": trace,
+        },
+    )
+    rows = repository.list_property_results(run)
+    assert len(rows) == 1
+    assert rows[0]["property_id"] == "IsDAG"
     assert rows[0]["counterexample"] == trace
 
 
