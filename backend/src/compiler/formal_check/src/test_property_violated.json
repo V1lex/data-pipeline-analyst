@@ -1,0 +1,73 @@
+{
+  "variables": [
+    {
+      "name": "status",
+      "type": "enum",
+      "values": [
+        "Created",
+        "Approved"
+      ]
+    },
+    {
+      "name": "approved",
+      "type": "boolean"
+    }
+  ],
+  "initial": {
+    "status": "Created",
+    "approved": false
+  },
+  "transitions": [
+    {
+      "name": "Approve",
+      "guard": {
+        "and": [
+          {
+            "eq": [
+              {
+                "var": "status"
+              },
+              "Created"
+            ]
+          },
+          {
+            "eq": [
+              {
+                "var": "approved"
+              },
+              false
+            ]
+          }
+        ]
+      },
+      "effects": [
+        {
+          "set": [
+            "status",
+            "Approved"
+          ]
+        },
+        {
+          "set": [
+            "approved",
+            true
+          ]
+        }
+      ]
+    }
+  ],
+  "properties": [
+    {
+      "id": "P_APPROVED_FORBIDDEN",
+      "type": "forbidden_state",
+      "expression": {
+        "eq": [
+          {
+            "var": "status"
+          },
+          "Approved"
+        ]
+      }
+    }
+  ]
+}

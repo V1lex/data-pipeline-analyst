@@ -27,11 +27,12 @@ def main() -> None:
 
     # 3. Formal Model inspection
     if spec.formal_model:
-        fc_input = spec.formal_model.to_formal_check_input()
         print("\n✓ Formal verification model extracted successfully:")
-        print(f"  - Variables: {[v.name for v in fc_input.variables]}")
-        print(f"  - Transitions: {[t.name for t in fc_input.transitions]}")
-        print(f"  - Properties: {[p.id for p in fc_input.properties]}")
+        print(f"  - Variables: {[v.get('name') for v in spec.formal_model.get('variables', [])]}")
+        print(
+            f"  - Transitions: {[t.get('name') for t in spec.formal_model.get('transitions', [])]}"
+        )
+        print(f"  - Properties: {[p.get('id') for p in spec.formal_model.get('properties', [])]}")
 
     print("\n✓ Specification is ready for verification (TLA+/TLC) and PySpark code generation!")
 

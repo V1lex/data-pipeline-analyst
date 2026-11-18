@@ -223,7 +223,7 @@ __marimo__/
 *.jar
 
 # formal_check
-formal_check/models/
+backend/src/compiler/formal_check/models/
 worker/tla2tools.jar
 .superpowers/
 frontend/dist/

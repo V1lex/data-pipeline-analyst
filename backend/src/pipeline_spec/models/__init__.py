@@ -41,13 +41,6 @@ from pipeline_spec.models.expressions import (
     WhenCase,
     WhenExpr,
 )
-from pipeline_spec.models.formal_model import (
-    FormalEffect,
-    FormalProperty,
-    FormalTransition,
-    FormalVariable,
-    PipelineFormalModel,
-)
 from pipeline_spec.models.operations import (
     AggregateDef,
     AggregateOperation,
@@ -133,11 +126,6 @@ __all__ = [
     "PipelineOperation",
     "DataConstraint",
     "PipelineStep",
-    "FormalVariable",
-    "FormalEffect",
-    "FormalTransition",
-    "FormalProperty",
-    "PipelineFormalModel",
     "PipelineMetadata",
     "PipelineSpecification",
 ]

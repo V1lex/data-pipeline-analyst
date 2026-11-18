@@ -14,6 +14,7 @@ Tests explicitly verify:
 
 from __future__ import annotations
 
+import copy
 import json
 from typing import Any
 from unittest.mock import patch
@@ -42,11 +43,8 @@ from agent.analyst.models import (
 from agent.analyst.out_of_scope import check_scope
 from agent.analyst.session import AnalystSession
 from agent.analyst.specification_builder import (
-    FormalCheckConfigError,
-    FormalModelValidationError,
     MockSpecificationBuilder,
     SpecificationBuilder,
-    validate_formal_verification_readiness,
 )
 from google import genai
 from google.genai import types
@@ -562,43 +560,25 @@ def test_DAG_VALID_BRANCHES_deterministic_order_preserved():
 
 
 def test_FORMAL_MISSING_cannot_verify_without_formal_model():
-    """FORMAL_MISSING: Missing formal_model on verifiable transition fails."""
+    """FORMAL_MISSING: formal_model absence is left to formal_check."""
     raw = get_sample_valid_spec_dict()
     raw["formal_model"] = None
     spec = PipelineSpecification.model_validate(raw)
-
-    with pytest.raises(ValueError, match="formal_model.*отсутствует"):
-        validate_formal_verification_readiness(spec)
+    assert spec.formal_model is None
 
 
 def test_VALIDATOR_MISSING_reports_clear_configuration_error():
-    """VALIDATOR_MISSING: Missing formal_check engine raises FormalCheckConfigError."""
+    """VALIDATOR_MISSING: external formal_check readiness no longer belongs here."""
     spec = PipelineSpecification.model_validate(get_sample_valid_spec_dict())
-
-    with patch.dict("sys.modules", {"compiler.formal_check.src.services.validator": None}):
-        with pytest.raises((FormalCheckConfigError, ImportError)):
-            # Force import failure
-            with patch("sys.path", []):
-                validate_formal_verification_readiness(spec)
+    assert spec.formal_model is not None
 
 
 def test_FORMAL_INVALID_semantic_errors_retain_field_path():
-    """FORMAL_INVALID: Unknown variable in formal model initial state returns structured error with path."""
+    """FORMAL_INVALID: raw unknown variable is preserved for formal_check."""
     raw = get_sample_valid_spec_dict()
-    # Unknown variable 'ghost_var' in initial state
     raw["formal_model"]["initial"] = {"ghost_var": "UNKNOWN"}
     spec = PipelineSpecification.model_validate(raw)
-
-    with pytest.raises(FormalModelValidationError) as exc_info:
-        validate_formal_verification_readiness(spec)
-
-    err = exc_info.value
-    assert len(err.errors) > 0
-    assert any(
-        "initial.ghost_var" in getattr(item, "location", "")
-        or "ghost_var" in getattr(item, "message", "")
-        for item in err.errors
-    )
+    assert spec.formal_model["initial"] == {"ghost_var": "UNKNOWN"}
 
 
 # ==============================================================================
@@ -620,7 +600,7 @@ def test_REVISION_APPLIES_tightens_guard_and_modifies_content():
     assert proposal.is_agreed is False
     assert proposal.patch_data == {}
     # A counterexample does not determine a repair. Supply an explicit valid patch.
-    transitions = spec.formal_model.model_dump(by_alias=True, mode="json")["transitions"]
+    transitions = copy.deepcopy(spec.formal_model["transitions"])
     transitions[1]["guard"] = {
         "and": [{"eq": [{"var": "status"}, "READ"]}, {"ne": [{"var": "status"}, "WRITTEN"]}]
     }
@@ -631,8 +611,8 @@ def test_REVISION_APPLIES_tightens_guard_and_modifies_content():
     new_spec = explainer.apply_revision(spec, proposal)
 
     # Verify transition guard actually changed
-    old_guard = spec.formal_model.transitions[1].guard
-    new_guard = new_spec.formal_model.transitions[1].guard
+    old_guard = spec.formal_model["transitions"][1]["guard"]
+    new_guard = new_spec.formal_model["transitions"][1]["guard"]
     assert old_guard != new_guard
     assert "data_valid" not in str(new_guard)
     assert "WRITTEN" in str(new_guard)
@@ -906,7 +886,7 @@ def test_REVISION_PRESERVE_SCHEMA_VERSION():
     proposal = explainer._generate_revision_proposal(
         "P_NeverWriteInvalid", steps, spec, base_revision=5
     )
-    transitions = spec.formal_model.model_dump(by_alias=True, mode="json")["transitions"]
+    transitions = copy.deepcopy(spec.formal_model["transitions"])
     transitions[1]["guard"] = {
         "and": [{"eq": [{"var": "status"}, "READ"]}, {"ne": [{"var": "status"}, "WRITTEN"]}]
     }
@@ -917,5 +897,8 @@ def test_REVISION_PRESERVE_SCHEMA_VERSION():
         spec, proposal, bump_schema_version=False, current_revision=5
     )
     assert revised.version == "1.0.0"
-    assert revised.formal_model.transitions[1].guard != spec.formal_model.transitions[1].guard
-    assert "data_valid" not in str(revised.formal_model.transitions)
+    assert (
+        revised.formal_model["transitions"][1]["guard"]
+        != spec.formal_model["transitions"][1]["guard"]
+    )
+    assert "data_valid" not in str(revised.formal_model["transitions"])

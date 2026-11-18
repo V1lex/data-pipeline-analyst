@@ -94,7 +94,7 @@ def test_success_retains_exact_context_and_disclaimer():
         "PROPERTY_VIOLATED",
         "TIMEOUT",
         "STATE_LIMIT_REACHED",
-        "ENGINE_ERROR",
+        "INFRASTRUCTURE_ERROR",
         "INFRASTRUCTURE_ERROR",
         "success",
         "UNKNOWN",

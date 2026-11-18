@@ -44,16 +44,27 @@ def violation(name="P", value=1, initial=False):
     ) + message(f"1: <Initial predicate>\nx = {value}", "2217:4")
 
 
+def temporal_violation(property_id="IsDAG", value=1):
+    return (
+        message("Temporal properties were violated.", "2116:1")
+        + message("The following behavior constitutes a counter-example:", "2264:1")
+        + message("1: <Initial predicate>\nx = 0", "2217:4")
+        + message(
+            f"2: <Advance line 10, col 1 to line 10, col 20 of module model>\nx = {value}", "2217:4"
+        )
+    )
+
+
 @pytest.mark.parametrize(
     "stdout", [PROGRESS, PROGRESS + message("Error: Deadlock reached.", "2114:1"), ""]
 )
 def test_progress_and_errors_cannot_be_a_completed_verdict(stdout):
-    result = json.loads(parser.parse_tlc_output(stdout, []))
-    assert result["status"] == "ENGINE_ERROR"
+    result = parser.parse_tlc_output(stdout, []).model_dump(mode="json")
+    assert result["status"] == "INFRASTRUCTURE_ERROR"
 
 
 def test_completed_output_uses_final_statistics():
-    result = json.loads(parser.parse_tlc_output(PROGRESS + SUCCESS, []))
+    result = parser.parse_tlc_output(PROGRESS + SUCCESS, []).model_dump(mode="json")
     assert result == {
         "status": "PROPERTY_HOLDS",
         "engine": "TLC",
@@ -61,11 +72,87 @@ def test_completed_output_uses_final_statistics():
     }
 
 
+def test_parse_tlc_batch_maps_reachable_configs(tmp_path):
+    from compiler.formal_check.src.models.models import RunnerOutput, Status
+
+    safety = tmp_path / "safety.cfg"
+    reachable = tmp_path / "P.cfg"
+    safety.write_text("safety", encoding="utf-8")
+    reachable.write_text("reachable", encoding="utf-8")
+
+    items = parser.parse_tlc_batch(
+        [safety, reachable],
+        [
+            RunnerOutput(stdout=SUCCESS, stderr="", exit_code=0, status=Status.SUCCESS),
+            RunnerOutput(stdout=violation("P"), stderr="", exit_code=12, status=Status.SUCCESS),
+        ],
+        [Variable(name="x", type="integer")],
+        {"P": reachable},
+    )
+    assert items[0]["configuration"] == "safety.cfg"
+    assert items[0]["status"] == "PROPERTY_HOLDS"
+    assert items[1]["configuration"] == "P.cfg"
+    assert items[1]["status"] == "PROPERTY_HOLDS"
+    assert items[1]["property_id"] == "P"
+
+
+def test_parse_tlc_batch_maps_exhaustion_to_unreachable(tmp_path):
+    from compiler.formal_check.src.models.models import RunnerOutput, Status
+
+    reachable = tmp_path / "P.cfg"
+    reachable.write_text("reachable", encoding="utf-8")
+
+    items = parser.parse_tlc_batch(
+        [reachable],
+        [
+            RunnerOutput(stdout=SUCCESS, stderr="", exit_code=0, status=Status.SUCCESS),
+        ],
+        [Variable(name="x", type="integer")],
+        {"P": reachable},
+    )
+    assert items[0]["status"] == "PROPERTY_UNREACHABLE"
+    assert items[0]["property_id"] == "P"
+    assert "counterexample" not in items[0]
+
+
+def test_parse_tlc_batch_keeps_typeok_as_model_violation(tmp_path):
+    from compiler.formal_check.src.models.models import RunnerOutput, Status
+
+    reachable = tmp_path / "P.cfg"
+    reachable.write_text("reachable", encoding="utf-8")
+
+    items = parser.parse_tlc_batch(
+        [reachable],
+        [
+            RunnerOutput(
+                stdout=violation("_FormalCheckTypeOK"),
+                stderr="",
+                exit_code=12,
+                status=Status.SUCCESS,
+            ),
+        ],
+        [Variable(name="x", type="integer")],
+        {"P": reachable},
+    )
+    assert items[0]["status"] == "PROPERTY_VIOLATED"
+    assert items[0]["property_id"] == "_FormalCheckTypeOK"
+
+
+def test_temporal_isdag_violation_is_parsed():
+    result = parser.parse_tlc_output(
+        temporal_violation(),
+        [Variable(name="x", type="integer")],
+    ).model_dump(mode="json")
+    assert result["status"] == "PROPERTY_VIOLATED"
+    assert result["property_id"] == "IsDAG"
+    assert result["counterexample"]["steps"][-1]["state"] == {"x": 1}
+
+
 @pytest.mark.parametrize("initial", [False, True])
 def test_counterexample_parses_single_variable_and_last_line(initial):
-    result = json.loads(
-        parser.parse_tlc_output(violation(initial=initial), [Variable(name="x", type="integer")])
-    )
+    result = parser.parse_tlc_output(
+        violation(initial=initial), [Variable(name="x", type="integer")]
+    ).model_dump(mode="json")
     assert result["status"] == "PROPERTY_VIOLATED"
     assert result["counterexample"]["steps"] == [
         {"number": 0, "transition": None, "state": {"x": 1}}
@@ -76,7 +163,9 @@ def test_transition_named_initial_keeps_its_name():
     stdout = message("Invariant P is violated.", "2110:1") + message(
         "1: <Initial line 5, col 1 to line 5, col 20 of module model>\nx = 1", "2217:4"
     )
-    result = json.loads(parser.parse_tlc_output(stdout, [Variable(name="x", type="integer")]))
+    result = parser.parse_tlc_output(stdout, [Variable(name="x", type="integer")]).model_dump(
+        mode="json"
+    )
     assert result["counterexample"]["steps"][0]["transition"] == "Initial"
 
 
@@ -110,7 +199,8 @@ def test_compile_handles_empty_membership_and_boolean_literals(tmp_path):
     text = (tmp_path / "model.tla").read_text()
     assert "{TRUE, FALSE}" in text
     assert "\\in {}" in text
-    assert "IsDAG" not in text
+    assert "IsDAG == <>[][~Next]_vars" in text
+    assert "PROPERTY IsDAG" in (tmp_path / "safety.cfg").read_text()
 
 
 def test_compile_escapes_strings_and_allows_terminal_model(tmp_path):
@@ -136,15 +226,22 @@ def test_check_model_aggregates_existential_reachability(monkeypatch, tmp_path):
     def run(**kwargs):
         config = Path(kwargs["config_path"])
         calls.append((config, config.read_text()))
-        text = SUCCESS if len(calls) == 1 else violation("P")
+        text = SUCCESS if config.name == "safety.cfg" else violation("P")
         return RunnerOutput(
-            stdout=text, stderr="", exit_code=0 if len(calls) == 1 else 12, status=Status.SUCCESS
+            stdout=text,
+            stderr="",
+            exit_code=0 if config.name == "safety.cfg" else 12,
+            status=Status.SUCCESS,
         )
 
     monkeypatch.setattr(checker, "run_tlc", run)
-    assert checker.check_model(model(reachable=True))["status"] == "PROPERTY_HOLDS"
+    result = checker.check_model(model(reachable=True))
+    assert result["parsed"][0]["status"] == "PROPERTY_HOLDS"
+    assert result["parsed"][1]["status"] == "PROPERTY_HOLDS"
+    assert result["parsed"][1]["property_id"] == "P"
     assert len(calls) == 2
     assert "INVARIANT P" not in calls[0][1]
+    assert "PROPERTY IsDAG" in calls[0][1]
     assert "INVARIANT P" in calls[1][1]
     assert not calls[0][0].exists()
 
@@ -161,8 +258,10 @@ def test_unreachable_target_blocks_overall_success(monkeypatch):
         ),
     )
     result = checker.check_model(model(reachable=True))
-    assert result["status"] == "PROPERTY_VIOLATED"
-    assert result["property_id"] == "P"
+    assert result["parsed"][0]["status"] == "PROPERTY_HOLDS"
+    assert result["parsed"][1]["status"] == "PROPERTY_UNREACHABLE"
+    assert result["parsed"][1]["property_id"] == "P"
+    assert "counterexample" not in result["parsed"][1]
 
 
 def test_check_model_timeout_and_engine_failures_never_pass(monkeypatch):
@@ -176,7 +275,8 @@ def test_check_model_timeout_and_engine_failures_never_pass(monkeypatch):
             stdout=SUCCESS, stderr="timeout", exit_code=-1, status=Status.TIMEOUT
         ),
     )
-    assert checker.check_model(model())["status"] == "TIMEOUT"
+    result = checker.check_model(model())
+    assert result["runner"]["outputs"][0]["status"] == "timeout"
     monkeypatch.setattr(
         checker,
         "run_tlc",
@@ -184,7 +284,8 @@ def test_check_model_timeout_and_engine_failures_never_pass(monkeypatch):
             stdout=PROGRESS, stderr="", exit_code=0, status=Status.SUCCESS
         ),
     )
-    assert checker.check_model(model())["status"] == "ENGINE_ERROR"
+    result = checker.check_model(model())
+    assert result["parsed"][0]["status"] == "INFRASTRUCTURE_ERROR"
 
 
 def test_isolated_jobs_use_different_paths(monkeypatch):
@@ -209,16 +310,22 @@ def test_real_tlc_safety_and_reachable():
     jar = Path("worker/tla2tools.jar")
     if not jar.is_file():
         pytest.skip("TLC jar not installed")
-    assert check_model(model(), jar_path=jar)["status"] == "PROPERTY_HOLDS"
-    assert check_model(model(reachable=True), jar_path=jar)["status"] == "PROPERTY_HOLDS"
+    assert check_model(model(), jar_path=jar)["parsed"][0]["status"] == "PROPERTY_HOLDS"
+    reachable = check_model(model(reachable=True), jar_path=jar)
+    safety = next(item for item in reachable["parsed"] if item["configuration"] == "safety.cfg")
+    assert safety["status"] == "PROPERTY_HOLDS"
     data = model()
     data["properties"][0]["expression"] = {"eq": [{"var": "x"}, 0]}
     result = check_model(data, jar_path=jar)
-    assert result["status"] == "PROPERTY_VIOLATED", result
-    assert result["counterexample"]["steps"][-1]["state"] == {"x": 1}
+    assert result["parsed"][0]["status"] == "PROPERTY_VIOLATED", result
+    assert result["parsed"][0]["counterexample"]["steps"][-1]["state"] == {"x": 1}
     data = model(reachable=True)
     data["properties"][0]["expression"] = {"eq": [{"var": "x"}, 2]}
-    assert check_model(data, jar_path=jar)["status"] == "PROPERTY_VIOLATED"
+    result = check_model(data, jar_path=jar)
+    unreachable = next(item for item in result["parsed"] if item["configuration"] == "P.cfg")
+    assert unreachable["status"] == "PROPERTY_UNREACHABLE"
+    assert unreachable["property_id"] == "P"
+    assert "counterexample" not in unreachable
 
 
 def test_cli_reads_named_input_and_prints_normalized_result(tmp_path, monkeypatch, capsys):
@@ -228,7 +335,7 @@ def test_cli_reads_named_input_and_prints_normalized_result(tmp_path, monkeypatc
     source.write_text(json.dumps({"variables": []}))
     monkeypatch.setattr("sys.argv", ["formal_check", str(source)])
     main.main()
-    assert json.loads(capsys.readouterr().out)["status"] == "MODEL_INVALID"
+    assert json.loads(capsys.readouterr().out)["validation"]["status"] == "MODEL_INVALID"
 
 
 def test_real_tlc_initial_violation_domains_cycles_and_strings():
@@ -240,18 +347,22 @@ def test_real_tlc_initial_violation_domains_cycles_and_strings():
     data = model()
     data["properties"][0]["expression"] = {"eq": [{"var": "x"}, 1]}
     result = check_model(data, jar_path=jar)
-    assert result["status"] == "PROPERTY_VIOLATED", result
-    assert result["counterexample"]["steps"] == [
+    assert result["parsed"][0]["status"] == "PROPERTY_VIOLATED", result
+    assert result["parsed"][0]["counterexample"]["steps"] == [
         {"number": 0, "transition": None, "state": {"x": 0}}
     ]
     data = model()
     data["transitions"][0].update(guard=None, effects=[{"set": ["x", {"add": [{"var": "x"}, 1]}]}])
-    assert check_model(data, jar_path=jar)["status"] == "MODEL_INVALID"
+    result = check_model(data, jar_path=jar)
+    assert result["parsed"][0]["status"] == "PROPERTY_VIOLATED"
+    assert result["parsed"][0]["property_id"] == "_FormalCheckTypeOK"
     data = model()
     data["transitions"].append(
         {"name": "Return", "guard": {"eq": [{"var": "x"}, 1]}, "effects": [{"set": ["x", 0]}]}
     )
-    assert check_model(data, jar_path=jar)["status"] == "PROPERTY_HOLDS"
+    result = check_model(data, jar_path=jar)
+    isdag = next(item for item in result["parsed"] if item["property_id"] == "IsDAG")
+    assert isdag["status"] == "PROPERTY_VIOLATED"
     value = 'Кириллица " \\ \n'
     data = {
         "variables": [{"name": "label", "type": "enum", "values": [value]}],
@@ -262,8 +373,8 @@ def test_real_tlc_initial_violation_domains_cycles_and_strings():
         ],
     }
     result = check_model(data, jar_path=jar)
-    assert result["status"] == "PROPERTY_VIOLATED", result
-    assert result["counterexample"]["steps"][0]["state"] == {"label": value}
+    assert result["parsed"][0]["status"] == "PROPERTY_VIOLATED", result
+    assert result["parsed"][0]["counterexample"]["steps"][0]["state"] == {"label": value}
 
 
 def test_runner_timeout_preserves_diagnostics_and_missing_jar_is_infrastructure(

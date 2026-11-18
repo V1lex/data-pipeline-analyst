@@ -1,12 +1,12 @@
 from __future__ import annotations
 
 from collections import defaultdict
+from typing import Any
 
 from pydantic import Field, model_validator
 
 from pipeline_spec.models.base import SpecBaseModel
 from pipeline_spec.models.constraints import DataConstraint
-from pipeline_spec.models.formal_model import PipelineFormalModel
 from pipeline_spec.models.operations import (
     JoinOperation,
     ReadOperation,
@@ -38,7 +38,7 @@ class PipelineSpecification(SpecBaseModel):
     constraints: list[DataConstraint] = Field(
         default_factory=list, description="Data quality & business rules"
     )
-    formal_model: PipelineFormalModel | None = Field(
+    formal_model: dict[str, Any] | None = Field(
         default=None,
         description="Formal verification model (states, transitions, properties) for TLA+/TLC",
     )

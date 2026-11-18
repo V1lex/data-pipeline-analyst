@@ -344,9 +344,9 @@ df_in.write.format(sink.format).mode(sink.save_mode).partitionBy(*sink.partition
    * `deadlock_free`: условие отсутствия тупиков (`ENABLED Next \/ FinalCondition`).
    * `reachable`: темпоральное свойство достижимости целевого состояния (`~[](~Goal)`).
 
-Спецификация преобразуется в валидный объект `formal_check.src.models.input.Input` через вызов метода:
+Формальная часть передаётся в formal_check как сырой JSON; никакая Pydantic-конвертация не выполняется вне формального модуля:
 ```python
-fc_input = spec.formal_model.to_formal_check_input()
+formal_check_input = spec.formal_model
 ```
 
 ---

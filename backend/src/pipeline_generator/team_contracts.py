@@ -3,7 +3,7 @@
 import json
 from typing import Any
 
-from pydantic import BaseModel, ValidationError
+from pydantic import BaseModel
 
 from .errors import PipelineError
 
@@ -24,20 +24,17 @@ def json_object(
 
 
 def specification_snapshot(value: dict[str, Any] | BaseModel) -> tuple[dict, dict | None]:
-    """Accept canonical Input or the team's validated PipelineSpecification object."""
+    """Accept raw canonical Input or extract raw formal_model from PipelineSpecification."""
     if isinstance(value, BaseModel) and hasattr(value, "formal_model"):
         formal = value.formal_model
         if formal is None:
             raise PipelineError("CONTEXT_REQUIRED", "В спецификации отсутствует formal_model.")
-        try:
-            canonical = formal.to_formal_check_input()
-        except (ValidationError, AttributeError, ImportError):
-            raise PipelineError(
-                "CONTEXT_REQUIRED",
-                "Нужны совместимые pipeline_spec и formal_check и валидная модель.",
-            ) from None
+        if isinstance(formal, dict):
+            raw_formal = formal
+        else:
+            raw_formal = formal.model_dump(mode="json", by_alias=True)
         return (
-            json_object(canonical, code="CONTEXT_REQUIRED", exclude_none=True),
+            json_object(raw_formal, code="CONTEXT_REQUIRED"),
             json_object(value, code="CONTEXT_REQUIRED"),
         )
     model = json_object(value, code="CONTEXT_REQUIRED")

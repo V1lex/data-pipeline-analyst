@@ -226,9 +226,11 @@ class PostgresRepository:
                     "SELECT spec_json FROM specifications WHERE id=%s", (run["spec_id"],)
                 ).fetchone()
                 property_id = result.get("property_id")
-                if property_id not in {
-                    item.get("id") for item in spec["spec_json"].get("properties", [])
-                }:
+                if (
+                    property_id
+                    not in {item.get("id") for item in spec["spec_json"].get("properties", [])}
+                    and property_id != "IsDAG"
+                ):
                     raise PipelineError(
                         "INVALID_VERIFICATION_RESULT",
                         "Нарушенное свойство отсутствует в этой версии.",

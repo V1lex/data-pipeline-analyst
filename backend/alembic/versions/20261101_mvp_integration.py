@@ -4,7 +4,6 @@ Existing records are preserved. Missing historic context/verdicts are not invent
 """
 
 from alembic import op
-import sqlalchemy as sa
 
 revision = "20261101_mvp"
 down_revision = "12a5814e76d1"
@@ -31,7 +30,7 @@ def upgrade():
     op.execute("ALTER TABLE verification_runs ADD COLUMN result_json jsonb")
     # Legacy completed runs have no trusted normalized verdict. Keep them blocked.
     op.execute(
-        'UPDATE verification_runs SET result_json=\'{"status":"ENGINE_ERROR","engine":"TLC","error":"Legacy run has no persisted verdict"}\', finished_at=COALESCE(finished_at,now()) WHERE status=\'FINISHED\''
+        'UPDATE verification_runs SET result_json=\'{"status":"INFRASTRUCTURE_ERROR","engine":"TLC","error":"Legacy run has no persisted verdict"}\', finished_at=COALESCE(finished_at,now()) WHERE status=\'FINISHED\''
     )
     for table, column in [
         ("projects", "created_at"),

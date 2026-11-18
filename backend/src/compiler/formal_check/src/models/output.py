@@ -32,6 +32,13 @@ class PropertyViolated(BaseModel):
     counterexample: Counterexample
 
 
+class PropertyUnreachable(BaseModel):
+    status: Literal["PROPERTY_UNREACHABLE"] = "PROPERTY_UNREACHABLE"
+    engine: Literal["TLC"] = "TLC"
+    property_id: str
+    error: str
+
+
 class ValidationErrorItem(BaseModel):
     type: str
     location: str
@@ -44,7 +51,7 @@ class ModelInvalid(BaseModel):
     errors: list[ValidationErrorItem]
 
 
-class EngineError(BaseModel):
-    status: Literal["ENGINE_ERROR"] = "ENGINE_ERROR"
+class InfrastructureError(BaseModel):
+    status: Literal["INFRASTRUCTURE_ERROR"] = "INFRASTRUCTURE_ERROR"
     engine: Literal["TLC"] = "TLC"
     error: str

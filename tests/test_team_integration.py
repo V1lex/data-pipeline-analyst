@@ -58,9 +58,7 @@ def test_real_pipeline_and_checker_round_trip(repository):
         loaded.pipeline_specification["steps"]
         == spec.model_dump(mode="json", by_alias=True)["steps"]
     )
-    assert loaded.behavioral_model == spec.formal_model.to_formal_check_input().model_dump(
-        mode="json", by_alias=True, exclude_none=True
-    )
+    assert loaded.behavioral_model == spec.formal_model
     assert loaded.pipeline_specification["sources"][0]["schema"]
 
 

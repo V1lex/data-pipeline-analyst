@@ -47,7 +47,7 @@ Worker забирает `QUEUED` через `FOR UPDATE SKIP LOCKED`, освоб
 
 ## Миграции
 
-`python -m db.migrations` и `PostgresRepository.migrate()` запускают одну цепочку Alembic в заданной `DATABASE_SCHEMA`. Исходная ревизия `12a5814e76d1` сохранена; `20261101_mvp` добавляет контекст, полный вердикт, server defaults, согласованные текстовые статусы, immutable triggers и сохранение диалога. Legacy completed без сохранённого вердикта получает блокирующий ENGINE_ERROR, а не выдуманный успех.
+`python -m db.migrations` и `PostgresRepository.migrate()` запускают одну цепочку Alembic в заданной `DATABASE_SCHEMA`. Исходная ревизия `12a5814e76d1` сохранена; `20261101_mvp` добавляет контекст, полный вердикт, server defaults, согласованные текстовые статусы, immutable triggers и сохранение диалога. Legacy completed без сохранённого вердикта получает блокирующий INFRASTRUCTURE_ERROR, а не выдуманный успех.
 
 Неверсионированная схема с существующими pipeline-таблицами отклоняется без изменений. Автоматическое stamp/adopt не выполняется. Обратная миграция MVP не обещает безопасно удалить снимки: используйте резервную копию. Миграции упакованы в wheel и проверены вне checkout.
 

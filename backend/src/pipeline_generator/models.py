@@ -12,10 +12,10 @@ CHECK_STATUSES = frozenset(
     {
         "PROPERTY_HOLDS",
         "PROPERTY_VIOLATED",
+        "PROPERTY_UNREACHABLE",
         "MODEL_INVALID",
         "TIMEOUT",
         "STATE_LIMIT_REACHED",
-        "ENGINE_ERROR",
         "INFRASTRUCTURE_ERROR",
     }
 )

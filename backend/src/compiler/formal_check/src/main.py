@@ -1,4 +1,4 @@
-"""Read a canonical Input JSON file and print one normalized overall verdict."""
+"""Read a canonical Input JSON file and print formal-check stage results."""
 
 import argparse
 import json
@@ -17,9 +17,14 @@ def main() -> None:
         data = json.loads(options.input.read_text(encoding="utf-8"))
     except (OSError, ValueError) as exc:
         result = {
-            "status": "MODEL_INVALID",
-            "engine": "TLC",
-            "errors": [{"type": "INVALID_INPUT", "location": "input", "message": str(exc)}],
+            "validation": {
+                "status": "MODEL_INVALID",
+                "engine": "TLC",
+                "errors": [{"type": "INVALID_INPUT", "location": "input", "message": str(exc)}],
+            },
+            "compilation": None,
+            "runner": None,
+            "parsed": [],
         }
     else:
         result = check_model(data, jar_path=options.jar_path, timeout=options.timeout)

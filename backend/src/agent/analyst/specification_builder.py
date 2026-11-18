@@ -55,12 +55,6 @@ MAX_SPEC_JSON_BYTES = 500_000
 MAX_SPEC_DEPTH = 30
 
 
-class FormalCheckConfigError(RuntimeError):
-    """Raised when formal_check engine is missing or cannot be imported."""
-
-    pass
-
-
 class FormalModelValidationError(ValueError):
     """Raised when semantic validation of formal model fails, preserving structured error details."""
 
@@ -83,44 +77,6 @@ def _check_json_depth(obj: Any, current_depth: int = 1, max_depth: int = MAX_SPE
     elif isinstance(obj, list):
         for item in obj:
             _check_json_depth(item, current_depth + 1, max_depth)
-
-
-def validate_formal_verification_readiness(spec: PipelineSpecification) -> None:
-    """Validates that specification is structurally and semantically ready for formal TLC verification (A06)."""
-    if spec.formal_model is None:
-        raise ValueError(
-            "Формальная модель (formal_model) отсутствует. Спецификация не может быть отправлена на верификацию без formal_model."
-        )
-
-    if not spec.formal_model.properties:
-        raise ValueError(
-            "Формальная модель должна содержать хотя бы одно верифицируемое свойство (properties)."
-        )
-
-    # Verify model conversion to formal_check canonical Input
-    try:
-        fc_input = spec.formal_model.to_formal_check_input()
-    except Exception as e:
-        raise ValueError(f"Ошибка преобразования formal_model в formal_check Input: {e}") from e
-
-    try:
-        from compiler.formal_check.src.models.output import ModelInvalid
-        from compiler.formal_check.src.services.validator import validate_input
-    except ImportError as e:
-        raise FormalCheckConfigError(
-            f"Модуль формальной проверки formal_check недоступен или поврежден: {e}"
-        ) from e
-
-    fc_res = validate_input(fc_input.model_dump(by_alias=True, exclude_none=True))
-    if isinstance(fc_res, ModelInvalid):
-        raise FormalModelValidationError(
-            errors=fc_res.errors,
-            message="Семантическая валидация formal_model не пройдена: "
-            + "; ".join(
-                f"[{getattr(e, 'location', 'unknown')}]: {getattr(e, 'message', str(e))}"
-                for e in fc_res.errors
-            ),
-        )
 
 
 class SpecificationBuilder:
@@ -213,17 +169,6 @@ class SpecificationBuilder:
                 # Validate topological order (DAG acyclicity & unified dependencies)
                 _ = spec.get_topological_order()
 
-                # Formal model verification check (A06)
-                if require_formal_model:
-                    validate_formal_verification_readiness(spec)
-                elif spec.formal_model is not None:
-                    try:
-                        validate_formal_verification_readiness(spec)
-                    except FormalCheckConfigError:
-                        logger.warning(
-                            "formal_check module not available for non-verifiable draft check."
-                        )
-
                 return spec
 
             except (
@@ -313,10 +258,13 @@ class SpecificationBuilder:
 
         formal_summary = "  - (не задана)"
         if spec.formal_model:
+            variables = spec.formal_model.get("variables", [])
+            transitions = spec.formal_model.get("transitions", [])
+            properties = spec.formal_model.get("properties", [])
             formal_summary = (
-                f"  - Переменные: {[v.name for v in spec.formal_model.variables]}\n"
-                f"  - Переходы: {[t.name for t in spec.formal_model.transitions]}\n"
-                f"  - Свойства: {[p.id for p in spec.formal_model.properties]}"
+                f"  - Переменные: {[v.get('name') for v in variables]}\n"
+                f"  - Переходы: {[t.get('name') for t in transitions]}\n"
+                f"  - Свойства: {[p.get('id') for p in properties]}"
             )
 
         return (

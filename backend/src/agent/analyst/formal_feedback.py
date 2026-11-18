@@ -36,7 +36,7 @@ class VerificationExplanation(BaseModel):
     """Human-readable explanation of formal verification result in domain terms."""
 
     status: str = Field(
-        description="Статус верификации (PROPERTY_HOLDS, PROPERTY_VIOLATED, MODEL_INVALID, TIMEOUT и др.)"
+        description="Статус верификации (PROPERTY_HOLDS, PROPERTY_VIOLATED, PROPERTY_UNREACHABLE, MODEL_INVALID, TIMEOUT и др.)"
     )
     title: str = Field(description="Заголовок для пользователя")
     summary: str = Field(description="Развернутое объяснение на языке предметной области")
@@ -101,7 +101,7 @@ class FormalFeedbackExplainer:
                 summary=(
                     f"Модель-чекер TLC подтвердил корректность спецификации конвейера '{pipeline_name}' "
                     f"(ID: {pipeline_id}, ред. {current_rev}) при заданных допущениях. "
-                    f"Все инварианты безопасности, ацикличность графа (IsDAG) и отсутствие взаимных блокировок (deadlock-free) выполняются. "
+                    f"Все инварианты безопасности, ацикличность переходов (IsDAG) и отсутствие взаимных блокировок (deadlock-free) выполняются. "
                     f"Исследовано состояний: {states} (уникальных: {distinct}, глубина графа: {depth}). "
                     f"Обратите внимание: формальная проверка модели подтверждает логику переходов состояний, "
                     f"но не доказывает корректность вычислений PySpark и качество данных в реальных таблицах."
@@ -109,6 +109,20 @@ class FormalFeedbackExplainer:
                 trace_steps=[],
                 proposal=None,
                 requires_reverification=False,
+            )
+
+        if status_str == "PROPERTY_UNREACHABLE":
+            prop_id = _get(result, "property_id") or "UnknownProperty"
+            return VerificationExplanation(
+                status="PROPERTY_UNREACHABLE",
+                title=f"⚠ Состояние недостижимо: {prop_id}",
+                summary=(
+                    f"Свойство достижимости '{prop_id}' не выполнено: целевое состояние не найдено "
+                    f"ни в одном состоянии полностью исследованного графа."
+                ),
+                trace_steps=[],
+                proposal=None,
+                requires_reverification=True,
             )
 
         # Case 2: Property violated
@@ -258,18 +272,6 @@ class FormalFeedbackExplainer:
         # Fully validate new specification
         new_spec = PipelineSpecification.model_validate(spec_data)
         new_spec.get_topological_order()
-
-        # If formal model is present, check semantic validation
-        if new_spec.formal_model:
-            from agent.analyst.specification_builder import (
-                FormalCheckConfigError,
-                validate_formal_verification_readiness,
-            )
-
-            try:
-                validate_formal_verification_readiness(new_spec)
-            except FormalCheckConfigError:
-                pass  # formal_check runner not available in isolated test
 
         logger.info(f"Successfully applied revision for specification '{new_spec.metadata.name}'.")
         return new_spec

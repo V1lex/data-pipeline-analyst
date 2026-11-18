@@ -1,5 +1,6 @@
 from datetime import datetime
 from enum import StrEnum
+from pathlib import Path
 
 from pydantic import BaseModel, Field
 
@@ -7,8 +8,8 @@ from pydantic import BaseModel, Field
 class Status(StrEnum):
     SUCCESS = "success"
     INFRASTRUCTURE_ERROR = "infrastructure_error"
+    STATE_LIMIT_REACHED = "state_limit_reached"
     TIMEOUT = "timeout"
-    ENGINE_ERROR = "engine_error"
 
 
 class RunnerOutput(BaseModel):
@@ -17,3 +18,14 @@ class RunnerOutput(BaseModel):
     exit_code: int
     status: Status
     timestamp: datetime = Field(default_factory=datetime.now)
+
+
+class RunnerBatchOutput(BaseModel):
+    outputs: list[RunnerOutput]
+    elapsed_seconds: float
+
+
+class CompilationResult(BaseModel):
+    model_path: Path
+    safety_config_path: Path
+    reachable_config_paths: dict[str, Path]

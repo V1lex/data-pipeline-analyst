@@ -2,19 +2,22 @@
 
 import json
 import re
+from pathlib import Path
 
 from compiler.formal_check.src.models.input import Variable, VariableType
+from compiler.formal_check.src.models.models import RunnerOutput, Status
 from compiler.formal_check.src.models.output import (
     Counterexample,
-    EngineError,
+    InfrastructureError,
     PropertyHolds,
+    PropertyUnreachable,
     PropertyViolated,
     Statistics,
     Step,
 )
 from compiler.formal_check.src.services.strings import decode_string
 
-type OutputResult = PropertyHolds | PropertyViolated | EngineError
+type OutputResult = PropertyHolds | PropertyViolated | InfrastructureError
 
 MESSAGE = re.compile(
     r"@!@!@STARTMSG (\d+):(\d+) @!@!@\r?\n(.*?)\r?\n@!@!@ENDMSG \1 @!@!@",
@@ -23,36 +26,105 @@ MESSAGE = re.compile(
 VIOLATED = re.compile(
     r"Invariant ([A-Za-z_][A-Za-z_0-9]*) is violated(?:\.| by the initial state:)"
 )
+TEMPORAL_VIOLATED = "Temporal properties were violated."
 
 
-def parse_tlc_output(stdout: str, variables: list[Variable]) -> str:
-    return _parse(stdout, variables).model_dump_json()
+def parse_tlc_output(
+    stdout: str,
+    variables: list[Variable],
+) -> OutputResult:
+    return _parse(stdout, variables)
 
 
-def _parse(stdout: str, variables: list[Variable]) -> OutputResult:
+def parse_tlc_batch(
+    config_paths: list[Path],
+    runner_outputs: list[RunnerOutput],
+    variables: list[Variable],
+    reachable_config_paths: dict[str, Path],
+) -> list[dict]:
+    """Parse a batch and apply REACHABLE semantics using compilation metadata."""
+    reverse_reachable = {
+        str(path.resolve(strict=False)): property_id
+        for property_id, path in reachable_config_paths.items()
+    }
+    parsed_items = []
+    for config_path, runner_output in zip(config_paths, runner_outputs, strict=True):
+        if runner_output.status is not Status.SUCCESS:
+            continue
+
+        parsed = parse_tlc_output(runner_output.stdout, variables)
+        reachable_property_id = reverse_reachable.get(str(config_path.resolve(strict=False)))
+        if reachable_property_id is not None:
+            if isinstance(parsed, PropertyViolated):
+                if parsed.property_id == "_FormalCheckTypeOK":
+                    parsed_item = parsed.model_dump(mode="json")
+                elif parsed.property_id == reachable_property_id:
+                    parsed_item = {
+                        "status": "PROPERTY_HOLDS",
+                        "engine": "TLC",
+                        "property_id": reachable_property_id,
+                    }
+                else:
+                    parsed_item = InfrastructureError(
+                        error=(
+                            f"Reachability run reported unexpected property {parsed.property_id}"
+                        )
+                    ).model_dump(mode="json")
+            elif isinstance(parsed, PropertyHolds):
+                parsed_item = PropertyUnreachable(
+                    property_id=reachable_property_id,
+                    error=("Target state is unreachable in the completely explored state graph"),
+                ).model_dump(mode="json")
+            else:
+                parsed_item = parsed.model_dump(mode="json")
+        else:
+            parsed_item = parsed.model_dump(mode="json")
+        parsed_items.append({"configuration": config_path.name, **parsed_item})
+    return parsed_items
+
+
+def _parse(
+    stdout: str,
+    variables: list[Variable],
+) -> OutputResult:
     records = MESSAGE.findall(stdout)
     messages = [body for _, _, body in records]
     violated = next((match for body in messages if (match := VIOLATED.search(body))), None)
+    temporal_violated = any(TEMPORAL_VIOLATED in body for body in messages)
     errors = [
         body
         for code, severity, body in records
         if severity == "1"
+        and not temporal_violated
         and not VIOLATED.search(body)
+        and TEMPORAL_VIOLATED not in body
         and not (violated is not None and code == "2121")
     ]
     if errors:
-        return EngineError(error="\n".join(errors))
+        return InfrastructureError(error="\n".join(errors))
     if violated is not None:
         try:
             trace = _parse_counterexample(messages, variables)
         except (ValueError, TypeError, KeyError, json.JSONDecodeError) as exc:
-            return EngineError(error=f"Invalid TLC counterexample: {exc}")
+            return InfrastructureError(error=f"Invalid TLC counterexample: {exc}")
         if not trace.steps:
-            return EngineError(error="TLC reported an invariant violation without a state trace")
+            return InfrastructureError(
+                error="TLC reported an invariant violation without a state trace"
+            )
         return PropertyViolated(property_id=violated.group(1), counterexample=trace)
+    if temporal_violated:
+        try:
+            trace = _parse_counterexample(messages, variables)
+        except (ValueError, TypeError, KeyError, json.JSONDecodeError) as exc:
+            return InfrastructureError(error=f"Invalid TLC temporal counterexample: {exc}")
+        if not trace.steps:
+            return InfrastructureError(
+                error="TLC reported a temporal violation without a state trace"
+            )
+        return PropertyViolated(property_id="IsDAG", counterexample=trace)
 
     if not any("Model checking completed. No error has been found." in body for body in messages):
-        return EngineError(error="TLC did not report successful model-check completion")
+        return InfrastructureError(error="TLC did not report successful model-check completion")
     # A progress sample is not the final exploration size. Parse the final summary.
     summaries = re.findall(
         r"([\d,]+) states generated, ([\d,]+) distinct states found, ([\d,]+) states left on queue\.",
@@ -62,7 +134,7 @@ def _parse(stdout: str, variables: list[Variable]) -> OutputResult:
         r"The depth of the complete state graph search is ([\d,]+)\.", "\n".join(messages)
     )
     if not summaries or not depths or _number(summaries[-1][2]) != 0:
-        return EngineError(error="TLC completion has no exhausted state-space statistics")
+        return InfrastructureError(error="TLC completion has no exhausted state-space statistics")
     generated, distinct, _ = summaries[-1]
     return PropertyHolds(
         statistics=Statistics(
