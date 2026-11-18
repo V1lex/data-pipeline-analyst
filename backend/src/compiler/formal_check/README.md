@@ -23,6 +23,15 @@ values are variable domains; a reachable state outside them returns
 Unicode enum strings are transported losslessly
 through TLC's ASCII literal syntax and decoded in counterexamples.
 
+For each `reachable` property, `parse_tlc_batch` maps the compiled config back
+to its property ID from `compilation.reachable_config_paths`. A violation of
+that property's inverted invariant is reported as successful reachability:
+`PROPERTY_HOLDS` with `property_id`. Exhaustion of the reachability config is
+reported as `PROPERTY_UNREACHABLE` without a counterexample. A violation of
+`_FormalCheckTypeOK` remains a domain/model violation and is not reachability
+success. Timeout and infrastructure failures remain failures and are never
+interpreted as unreachable.
+
 Set `TLC_JAR_PATH` to an official `tla2tools.jar`, or put it at
 `worker/tla2tools.jar`. Java must be on `PATH`; `JAVA_BIN` can override it.
 The jar is not committed. Missing Java/jar, engine failure and timeout are

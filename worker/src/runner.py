@@ -59,6 +59,31 @@ def aggregate_verification(stage_result: dict) -> dict:
                 "engine": "TLC",
                 "error": item.get("error", "TLC output could not be parsed"),
             }
+        if status == "PROPERTY_UNREACHABLE":
+            result = dict(item)
+            result.pop("configuration", None)
+            return result
+        if item.get("configuration") != "safety.cfg" and status == "PROPERTY_VIOLATED":
+            property_id = item.get("property_id")
+            if property_id == "_FormalCheckTypeOK":
+                return {
+                    "status": "MODEL_INVALID",
+                    "engine": "TLC",
+                    "errors": [
+                        {
+                            "type": "OUT_OF_DOMAIN_VALUE",
+                            "location": "transitions",
+                            "message": "A reachable state violates a declared variable domain",
+                        }
+                    ],
+                    "counterexample": item.get("counterexample"),
+                }
+            if property_id:
+                return {
+                    "status": "INFRASTRUCTURE_ERROR",
+                    "engine": "TLC",
+                    "error": f"Reachability run reported unexpected property {property_id}",
+                }
         if item.get("configuration") == "safety.cfg" and status == "PROPERTY_VIOLATED":
             result = dict(item)
             result.pop("configuration", None)
@@ -78,20 +103,14 @@ def aggregate_verification(stage_result: dict) -> dict:
             return result
         if item.get("configuration") == "safety.cfg" and status == "PROPERTY_HOLDS":
             statistics = item.get("statistics")
+        elif item.get("configuration", "").endswith(".cfg") and status == "PROPERTY_HOLDS":
+            property_id = item.get("property_id")
+            if property_id:
+                checked_properties.append(property_id)
         elif item.get("configuration", "").endswith(".cfg") and status == "PROPERTY_VIOLATED":
             property_id = item.get("property_id")
             if property_id:
                 checked_properties.append(property_id)
-        elif item.get("configuration", "").endswith(".cfg") and status == "PROPERTY_HOLDS":
-            property_id = item.get("configuration", "")[:-4]
-            if property_id:
-                return {
-                    "status": "PROPERTY_UNREACHABLE",
-                    "engine": "TLC",
-                    "property_id": property_id,
-                    "error": "Target state is unreachable",
-                    "statistics": item.get("statistics"),
-                }
 
     if statistics is None:
         statistics = {}

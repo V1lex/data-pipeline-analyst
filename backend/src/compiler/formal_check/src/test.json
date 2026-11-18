@@ -1,0 +1,304 @@
+{
+  "variables": [
+    {
+      "name": "status",
+      "type": "enum",
+      "values": [
+        "Created",
+        "Approved",
+        "Cancelled",
+        "Executed"
+      ]
+    },
+    {
+      "name": "approved",
+      "type": "boolean"
+    },
+    {
+      "name": "cancelled",
+      "type": "boolean"
+    },
+    {
+      "name": "attempts",
+      "type": "integer",
+      "min": 0,
+      "max": 3
+    },
+    {
+      "name": "balance",
+      "type": "integer",
+      "min": 0,
+      "max": 100
+    }
+  ],
+  "initial": {
+    "status": "Created",
+    "approved": false,
+    "cancelled": false,
+    "attempts": 0,
+    "balance": 50
+  },
+  "transitions": [
+    {
+      "name": "Approve",
+      "guard": {
+        "and": [
+          {
+            "eq": [
+              {
+                "var": "status"
+              },
+              "Created"
+            ]
+          },
+          {
+            "eq": [
+              {
+                "var": "approved"
+              },
+              false
+            ]
+          }
+        ]
+      },
+      "effects": [
+        {
+          "set": [
+            "status",
+            "Approved"
+          ]
+        },
+        {
+          "set": [
+            "approved",
+            true
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Retry",
+      "guard": {
+        "and": [
+          {
+            "in": [
+              {
+                "var": "status"
+              },
+              [
+                "Created",
+                "Approved"
+              ]
+            ]
+          },
+          {
+            "lt": [
+              {
+                "var": "attempts"
+              },
+              3
+            ]
+          },
+          {
+            "not": [
+              {
+                "eq": [
+                  {
+                    "var": "cancelled"
+                  },
+                  true
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "effects": [
+        {
+          "set": [
+            "attempts",
+            {
+              "add": [
+                {
+                  "var": "attempts"
+                },
+                1
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Cancel",
+      "guard": {
+        "or": [
+          {
+            "eq": [
+              {
+                "var": "status"
+              },
+              "Created"
+            ]
+          },
+          {
+            "eq": [
+              {
+                "var": "status"
+              },
+              "Approved"
+            ]
+          }
+        ]
+      },
+      "effects": [
+        {
+          "set": [
+            "status",
+            "Cancelled"
+          ]
+        },
+        {
+          "set": [
+            "cancelled",
+            true
+          ]
+        },
+        {
+          "set": [
+            "balance",
+            {
+              "sub": [
+                {
+                  "var": "balance"
+                },
+                10
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Execute",
+      "guard": {
+        "and": [
+          {
+            "eq": [
+              {
+                "var": "status"
+              },
+              "Approved"
+            ]
+          },
+          {
+            "ge": [
+              {
+                "var": "balance"
+              },
+              10
+            ]
+          }
+        ]
+      },
+      "effects": [
+        {
+          "set": [
+            "status",
+            "Executed"
+          ]
+        },
+        {
+          "set": [
+            "balance",
+            {
+              "sub": [
+                {
+                  "var": "balance"
+                },
+                10
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "properties": [
+    {
+      "id": "P1",
+      "type": "invariant",
+      "expression": {
+        "and": [
+          {
+            "ge": [
+              {
+                "var": "attempts"
+              },
+              0
+            ]
+          },
+          {
+            "le": [
+              {
+                "var": "attempts"
+              },
+              3
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "P2",
+      "type": "forbidden_state",
+      "expression": {
+        "and": [
+          {
+            "eq": [
+              {
+                "var": "status"
+              },
+              "Executed"
+            ]
+          },
+          {
+            "eq": [
+              {
+                "var": "cancelled"
+              },
+              true
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "P3",
+      "type": "reachable",
+      "expression": {
+        "eq": [
+          {
+            "var": "status"
+          },
+          "Executed"
+        ]
+      }
+    },
+    {
+      "id": "P4",
+      "type": "deadlock_free",
+      "expression": {
+        "in": [
+          {
+            "var": "status"
+          },
+          [
+            "Executed",
+            "Cancelled"
+          ]
+        ]
+      }
+    }
+  ]
+}

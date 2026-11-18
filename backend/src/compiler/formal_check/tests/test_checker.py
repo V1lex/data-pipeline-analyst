@@ -72,6 +72,72 @@ def test_completed_output_uses_final_statistics():
     }
 
 
+def test_parse_tlc_batch_maps_reachable_configs(tmp_path):
+    from compiler.formal_check.src.models.models import RunnerOutput, Status
+
+    safety = tmp_path / "safety.cfg"
+    reachable = tmp_path / "P.cfg"
+    safety.write_text("safety", encoding="utf-8")
+    reachable.write_text("reachable", encoding="utf-8")
+
+    items = parser.parse_tlc_batch(
+        [safety, reachable],
+        [
+            RunnerOutput(stdout=SUCCESS, stderr="", exit_code=0, status=Status.SUCCESS),
+            RunnerOutput(stdout=violation("P"), stderr="", exit_code=12, status=Status.SUCCESS),
+        ],
+        [Variable(name="x", type="integer")],
+        {"P": reachable},
+    )
+    assert items[0]["configuration"] == "safety.cfg"
+    assert items[0]["status"] == "PROPERTY_HOLDS"
+    assert items[1]["configuration"] == "P.cfg"
+    assert items[1]["status"] == "PROPERTY_HOLDS"
+    assert items[1]["property_id"] == "P"
+
+
+def test_parse_tlc_batch_maps_exhaustion_to_unreachable(tmp_path):
+    from compiler.formal_check.src.models.models import RunnerOutput, Status
+
+    reachable = tmp_path / "P.cfg"
+    reachable.write_text("reachable", encoding="utf-8")
+
+    items = parser.parse_tlc_batch(
+        [reachable],
+        [
+            RunnerOutput(stdout=SUCCESS, stderr="", exit_code=0, status=Status.SUCCESS),
+        ],
+        [Variable(name="x", type="integer")],
+        {"P": reachable},
+    )
+    assert items[0]["status"] == "PROPERTY_UNREACHABLE"
+    assert items[0]["property_id"] == "P"
+    assert "counterexample" not in items[0]
+
+
+def test_parse_tlc_batch_keeps_typeok_as_model_violation(tmp_path):
+    from compiler.formal_check.src.models.models import RunnerOutput, Status
+
+    reachable = tmp_path / "P.cfg"
+    reachable.write_text("reachable", encoding="utf-8")
+
+    items = parser.parse_tlc_batch(
+        [reachable],
+        [
+            RunnerOutput(
+                stdout=violation("_FormalCheckTypeOK"),
+                stderr="",
+                exit_code=12,
+                status=Status.SUCCESS,
+            ),
+        ],
+        [Variable(name="x", type="integer")],
+        {"P": reachable},
+    )
+    assert items[0]["status"] == "PROPERTY_VIOLATED"
+    assert items[0]["property_id"] == "_FormalCheckTypeOK"
+
+
 def test_temporal_isdag_violation_is_parsed():
     result = parser.parse_tlc_output(
         temporal_violation(),
@@ -171,7 +237,8 @@ def test_check_model_aggregates_existential_reachability(monkeypatch, tmp_path):
     monkeypatch.setattr(checker, "run_tlc", run)
     result = checker.check_model(model(reachable=True))
     assert result["parsed"][0]["status"] == "PROPERTY_HOLDS"
-    assert result["parsed"][1]["status"] == "PROPERTY_VIOLATED"
+    assert result["parsed"][1]["status"] == "PROPERTY_HOLDS"
+    assert result["parsed"][1]["property_id"] == "P"
     assert len(calls) == 2
     assert "INVARIANT P" not in calls[0][1]
     assert "PROPERTY IsDAG" in calls[0][1]
@@ -192,6 +259,9 @@ def test_unreachable_target_blocks_overall_success(monkeypatch):
     )
     result = checker.check_model(model(reachable=True))
     assert result["parsed"][0]["status"] == "PROPERTY_HOLDS"
+    assert result["parsed"][1]["status"] == "PROPERTY_UNREACHABLE"
+    assert result["parsed"][1]["property_id"] == "P"
+    assert "counterexample" not in result["parsed"][1]
 
 
 def test_check_model_timeout_and_engine_failures_never_pass(monkeypatch):
@@ -253,7 +323,9 @@ def test_real_tlc_safety_and_reachable():
     data["properties"][0]["expression"] = {"eq": [{"var": "x"}, 2]}
     result = check_model(data, jar_path=jar)
     unreachable = next(item for item in result["parsed"] if item["configuration"] == "P.cfg")
-    assert unreachable["status"] == "PROPERTY_HOLDS"
+    assert unreachable["status"] == "PROPERTY_UNREACHABLE"
+    assert unreachable["property_id"] == "P"
+    assert "counterexample" not in unreachable
 
 
 def test_cli_reads_named_input_and_prints_normalized_result(tmp_path, monkeypatch, capsys):

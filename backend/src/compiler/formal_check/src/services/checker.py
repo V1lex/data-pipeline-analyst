@@ -4,10 +4,9 @@ import math
 import tempfile
 from pathlib import Path
 
-from compiler.formal_check.src.models.models import Status
 from compiler.formal_check.src.models.output import ModelInvalid
 from compiler.formal_check.src.services.compiler import compile_input
-from compiler.formal_check.src.services.parser import parse_tlc_output
+from compiler.formal_check.src.services.parser import parse_tlc_batch
 from compiler.formal_check.src.services.runner import run_tlc, run_tlc_batch
 from compiler.formal_check.src.services.validator import validate_input
 
@@ -50,18 +49,12 @@ def check_model(
             jar_path=jar_path,
             run_tlc_fn=run_tlc,
         )
-        parsed = []
-        for config_path, output in zip(configs, batch.outputs, strict=False):
-            if output.status is Status.SUCCESS:
-                parsed.append(
-                    {
-                        "configuration": config_path.name,
-                        **parse_tlc_output(
-                            output.stdout,
-                            model.variables,
-                        ).model_dump(mode="json"),
-                    }
-                )
+        parsed = parse_tlc_batch(
+            config_paths=configs,
+            runner_outputs=batch.outputs,
+            variables=model.variables,
+            reachable_config_paths=compilation.reachable_config_paths,
+        )
         return {
             "validation": model.model_dump(mode="json"),
             "compilation": compilation.model_dump(mode="json"),

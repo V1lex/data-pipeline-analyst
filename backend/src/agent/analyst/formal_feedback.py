@@ -36,7 +36,7 @@ class VerificationExplanation(BaseModel):
     """Human-readable explanation of formal verification result in domain terms."""
 
     status: str = Field(
-        description="Статус верификации (PROPERTY_HOLDS, PROPERTY_VIOLATED, MODEL_INVALID, TIMEOUT и др.)"
+        description="Статус верификации (PROPERTY_HOLDS, PROPERTY_VIOLATED, PROPERTY_UNREACHABLE, MODEL_INVALID, TIMEOUT и др.)"
     )
     title: str = Field(description="Заголовок для пользователя")
     summary: str = Field(description="Развернутое объяснение на языке предметной области")
@@ -109,6 +109,20 @@ class FormalFeedbackExplainer:
                 trace_steps=[],
                 proposal=None,
                 requires_reverification=False,
+            )
+
+        if status_str == "PROPERTY_UNREACHABLE":
+            prop_id = _get(result, "property_id") or "UnknownProperty"
+            return VerificationExplanation(
+                status="PROPERTY_UNREACHABLE",
+                title=f"⚠ Состояние недостижимо: {prop_id}",
+                summary=(
+                    f"Свойство достижимости '{prop_id}' не выполнено: целевое состояние не найдено "
+                    f"ни в одном состоянии полностью исследованного графа."
+                ),
+                trace_steps=[],
+                proposal=None,
+                requires_reverification=True,
             )
 
         # Case 2: Property violated

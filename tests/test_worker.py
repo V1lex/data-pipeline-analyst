@@ -89,10 +89,9 @@ def test_worker_aggregates_safety_reachability_and_temporal_results():
                 },
                 {
                     "configuration": "P.cfg",
-                    "status": "PROPERTY_VIOLATED",
+                    "status": "PROPERTY_HOLDS",
                     "engine": "TLC",
                     "property_id": "P",
-                    "counterexample": {"steps": []},
                 },
             ],
         }
@@ -100,6 +99,40 @@ def test_worker_aggregates_safety_reachability_and_temporal_results():
     assert result["status"] == "PROPERTY_HOLDS"
     assert result["checked_properties"] == ["P"]
     assert result["statistics"]["states_generated"] == 3
+
+
+def test_worker_reach_typeok_violation_is_model_invalid():
+    from worker.src.runner import aggregate_verification
+
+    result = aggregate_verification(
+        {
+            "validation": {"variables": []},
+            "compilation": {},
+            "runner": {
+                "outputs": [
+                    {"status": "success", "exit_code": 0},
+                    {"status": "success", "exit_code": 12},
+                ]
+            },
+            "parsed": [
+                {
+                    "configuration": "safety.cfg",
+                    "status": "PROPERTY_HOLDS",
+                    "engine": "TLC",
+                    "statistics": {"states_generated": 2, "distinct_states": 2, "depth": 2},
+                },
+                {
+                    "configuration": "P.cfg",
+                    "status": "PROPERTY_VIOLATED",
+                    "engine": "TLC",
+                    "property_id": "_FormalCheckTypeOK",
+                    "counterexample": {"steps": []},
+                },
+            ],
+        }
+    )
+    assert result["status"] == "MODEL_INVALID"
+    assert result["errors"][0]["type"] == "OUT_OF_DOMAIN_VALUE"
 
 
 def test_worker_aggregates_unreachable_property():
@@ -124,9 +157,10 @@ def test_worker_aggregates_unreachable_property():
                 },
                 {
                     "configuration": "P.cfg",
-                    "status": "PROPERTY_HOLDS",
+                    "status": "PROPERTY_UNREACHABLE",
                     "engine": "TLC",
-                    "statistics": {"states_generated": 2, "distinct_states": 2, "depth": 2},
+                    "property_id": "P",
+                    "error": "Target state is unreachable",
                 },
             ],
         }

@@ -2,12 +2,15 @@
 
 import json
 import re
+from pathlib import Path
 
 from compiler.formal_check.src.models.input import Variable, VariableType
+from compiler.formal_check.src.models.models import RunnerOutput, Status
 from compiler.formal_check.src.models.output import (
     Counterexample,
     InfrastructureError,
     PropertyHolds,
+    PropertyUnreachable,
     PropertyViolated,
     Statistics,
     Step,
@@ -31,6 +34,53 @@ def parse_tlc_output(
     variables: list[Variable],
 ) -> OutputResult:
     return _parse(stdout, variables)
+
+
+def parse_tlc_batch(
+    config_paths: list[Path],
+    runner_outputs: list[RunnerOutput],
+    variables: list[Variable],
+    reachable_config_paths: dict[str, Path],
+) -> list[dict]:
+    """Parse a batch and apply REACHABLE semantics using compilation metadata."""
+    reverse_reachable = {
+        str(path.resolve(strict=False)): property_id
+        for property_id, path in reachable_config_paths.items()
+    }
+    parsed_items = []
+    for config_path, runner_output in zip(config_paths, runner_outputs, strict=True):
+        if runner_output.status is not Status.SUCCESS:
+            continue
+
+        parsed = parse_tlc_output(runner_output.stdout, variables)
+        reachable_property_id = reverse_reachable.get(str(config_path.resolve(strict=False)))
+        if reachable_property_id is not None:
+            if isinstance(parsed, PropertyViolated):
+                if parsed.property_id == "_FormalCheckTypeOK":
+                    parsed_item = parsed.model_dump(mode="json")
+                elif parsed.property_id == reachable_property_id:
+                    parsed_item = {
+                        "status": "PROPERTY_HOLDS",
+                        "engine": "TLC",
+                        "property_id": reachable_property_id,
+                    }
+                else:
+                    parsed_item = InfrastructureError(
+                        error=(
+                            f"Reachability run reported unexpected property {parsed.property_id}"
+                        )
+                    ).model_dump(mode="json")
+            elif isinstance(parsed, PropertyHolds):
+                parsed_item = PropertyUnreachable(
+                    property_id=reachable_property_id,
+                    error=("Target state is unreachable in the completely explored state graph"),
+                ).model_dump(mode="json")
+            else:
+                parsed_item = parsed.model_dump(mode="json")
+        else:
+            parsed_item = parsed.model_dump(mode="json")
+        parsed_items.append({"configuration": config_path.name, **parsed_item})
+    return parsed_items
 
 
 def _parse(

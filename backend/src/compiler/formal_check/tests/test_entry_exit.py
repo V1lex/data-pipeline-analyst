@@ -150,6 +150,65 @@ def test_internal_type_violation_is_distinguishable(monkeypatch) -> None:
     assert result["parsed"][0]["property_id"] == "_FormalCheckTypeOK"
 
 
+def test_reach_typeok_violation_is_not_successful_reachability(monkeypatch) -> None:
+    def run(**kwargs):
+        config = Path(kwargs["config_path"])
+        stdout = (
+            SUCCESS if config.name == "safety.cfg" else violation("_FormalCheckTypeOK", value=2)
+        )
+        return RunnerOutput(
+            stdout=stdout,
+            stderr="",
+            exit_code=0 if config.name == "safety.cfg" else 12,
+            status=Status.SUCCESS,
+        )
+
+    monkeypatch.setattr(checker, "run_tlc", run)
+    result = checker.check_model(base_model(reachable=True))
+    reachable = result["parsed"][1]
+
+    assert reachable["status"] == "PROPERTY_VIOLATED"
+    assert reachable["property_id"] == "_FormalCheckTypeOK"
+
+
+def test_reach_timeout_is_not_unreachable(monkeypatch) -> None:
+    monkeypatch.setattr(
+        checker,
+        "run_tlc",
+        lambda **kwargs: RunnerOutput(
+            stdout="",
+            stderr="TLC execution timed out",
+            exit_code=-1,
+            status=Status.TIMEOUT,
+        ),
+    )
+
+    result = checker.check_model(base_model(reachable=True))
+
+    assert result["runner"]["outputs"]
+    assert all(output["status"] == "timeout" for output in result["runner"]["outputs"])
+    assert not any(item.get("status") == "PROPERTY_UNREACHABLE" for item in result["parsed"])
+
+
+def test_reach_infrastructure_error_is_not_unreachable(monkeypatch) -> None:
+    monkeypatch.setattr(
+        checker,
+        "run_tlc",
+        lambda **kwargs: RunnerOutput(
+            stdout="",
+            stderr="Java process exited with code 137",
+            exit_code=137,
+            status=Status.INFRASTRUCTURE_ERROR,
+        ),
+    )
+
+    result = checker.check_model(base_model(reachable=True))
+
+    assert result["runner"]["outputs"]
+    assert all(output["status"] == "infrastructure_error" for output in result["runner"]["outputs"])
+    assert not any(item.get("status") == "PROPERTY_UNREACHABLE" for item in result["parsed"])
+
+
 def test_reachable_witness_and_unreachable_exhaustion(monkeypatch) -> None:
     def witness(**kwargs):
         config = Path(kwargs["config_path"])
@@ -164,7 +223,7 @@ def test_reachable_witness_and_unreachable_exhaustion(monkeypatch) -> None:
     monkeypatch.setattr(checker, "run_tlc", witness)
     result = checker.check_model(base_model(reachable=True))
     assert result["parsed"][0]["status"] == "PROPERTY_HOLDS"
-    assert result["parsed"][1]["status"] == "PROPERTY_VIOLATED"
+    assert result["parsed"][1]["status"] == "PROPERTY_HOLDS"
     assert result["parsed"][1]["property_id"] == "P"
 
     monkeypatch.setattr(
@@ -179,7 +238,80 @@ def test_reachable_witness_and_unreachable_exhaustion(monkeypatch) -> None:
     )
     result = checker.check_model(base_model(reachable=True))
     assert result["parsed"][0]["status"] == "PROPERTY_HOLDS"
+    assert result["parsed"][1]["status"] == "PROPERTY_UNREACHABLE"
+    assert result["parsed"][1]["property_id"] == "P"
+    assert "counterexample" not in result["parsed"][1]
+
+
+def test_multiple_reach_properties_are_interpreted_by_compilation_mapping(monkeypatch) -> None:
+    data = base_model(reachable=True)
+    data["properties"].append(
+        {
+            "id": "P2",
+            "type": "reachable",
+            "expression": {"eq": [{"var": "x"}, 1]},
+        }
+    )
+
+    def run(**kwargs):
+        config = Path(kwargs["config_path"])
+        if config.name == "safety.cfg":
+            stdout = SUCCESS
+        elif config.name == "P.cfg":
+            stdout = violation("P")
+        else:
+            stdout = SUCCESS
+        return RunnerOutput(
+            stdout=stdout,
+            stderr="",
+            exit_code=12 if config.name == "P.cfg" else 0,
+            status=Status.SUCCESS,
+        )
+
+    monkeypatch.setattr(checker, "run_tlc", run)
+    result = checker.check_model(data)
+
+    reachable = next(item for item in result["parsed"] if item["configuration"] == "P.cfg")
+    unreachable = next(item for item in result["parsed"] if item["configuration"] == "P2.cfg")
+    assert reachable["status"] == "PROPERTY_HOLDS"
+    assert reachable["property_id"] == "P"
+    assert unreachable["status"] == "PROPERTY_UNREACHABLE"
+    assert unreachable["property_id"] == "P2"
+    assert "counterexample" not in unreachable
+
+
+def test_mixed_reachable_and_invariant_batch(monkeypatch) -> None:
+    data = base_model(reachable=True)
+    data["properties"].insert(
+        0,
+        {
+            "id": "Safe",
+            "type": "invariant",
+            "expression": {"le": [{"var": "x"}, 1]},
+        },
+    )
+
+    def run(**kwargs):
+        config = Path(kwargs["config_path"])
+        if config.name == "P.cfg":
+            stdout = violation("P")
+            exit_code = 12
+        else:
+            stdout = SUCCESS
+            exit_code = 0
+        return RunnerOutput(
+            stdout=stdout,
+            stderr="",
+            exit_code=exit_code,
+            status=Status.SUCCESS,
+        )
+
+    monkeypatch.setattr(checker, "run_tlc", run)
+    result = checker.check_model(data)
+
+    assert result["parsed"][0]["status"] == "PROPERTY_HOLDS"
     assert result["parsed"][1]["status"] == "PROPERTY_HOLDS"
+    assert result["parsed"][1]["property_id"] == "P"
 
 
 def test_deadlock_property_is_compiled_and_run(monkeypatch) -> None:
