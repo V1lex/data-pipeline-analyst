@@ -1,0 +1,23 @@
+{
+  "status": "SUCCEEDED",
+  "engine": "PySpark 3.5.8, Java 17, isolated Docker",
+  "network": "disabled",
+  "inputs": [
+    "examples/data/readings.csv"
+  ],
+  "actual_rows": [
+    {
+      "sensor": "north",
+      "mean_temperature": 15.0,
+      "reading_count": 2
+    },
+    {
+      "sensor": "south",
+      "mean_temperature": -5.0,
+      "reading_count": 1
+    }
+  ],
+  "expected_match": true,
+  "archive_sha256": "0d6b014aeeaeb4beb6ad4e288165dbfc2e809f625ce99d012cb6669e87991eee",
+  "negative_cases": {}
+}

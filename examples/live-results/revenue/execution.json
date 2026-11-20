@@ -1,0 +1,25 @@
+{
+  "status": "SUCCEEDED",
+  "engine": "PySpark 3.5.8, Java 17, isolated Docker",
+  "network": "disabled",
+  "inputs": [
+    "examples/data/orders.csv",
+    "examples/data/prices.csv"
+  ],
+  "actual_rows": [
+    {
+      "city": "Казань",
+      "revenue": "150.0000"
+    },
+    {
+      "city": "Москва",
+      "revenue": "300.0000"
+    }
+  ],
+  "expected_match": true,
+  "archive_sha256": "85fb639750db0bf6b327c7645ce76076e4626c8cee3725e573f172b4adc7dc3e",
+  "negative_cases": {
+    "duplicate_price": "FAILED as expected",
+    "missing_price": "FAILED as expected"
+  }
+}
