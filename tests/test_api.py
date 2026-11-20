@@ -301,3 +301,28 @@ def test_deleting_project_during_worker_check_discards_result(app_client, reposi
     assert process_one(repository, checker=checker)
     assert client.get(f"/api/v1/projects/{pid}").status_code == 404
     assert repository.claim_verification() is None
+
+
+def test_verification_explanation_belongs_to_selected_version(app_client, repository):
+    from agent.analyst.specification_builder import MockSpecificationBuilder
+
+    project = repository.create_project("Explain")
+    specification = MockSpecificationBuilder().build_verifiable_specification([])
+    spec_id = repository.create_specification(project, specification, "Requirements", [], {})
+    run_id = repository.enqueue_verification(spec_id)
+    attempt = repository.claim_verification()
+    repository.finish_verification(
+        run_id, {"status": "PROPERTY_UNREACHABLE", "property_id": "P"}, attempt["lease_token"]
+    )
+    response = app_client.get(
+        f"/api/v1/specifications/{spec_id}/verifications/{run_id}/explanation"
+    )
+    assert response.status_code == 200, response.text
+    assert response.json()["status"] == "PROPERTY_UNREACHABLE"
+    other = repository.create_specification(project, specification, "Other", [], {})
+    assert (
+        app_client.get(
+            f"/api/v1/specifications/{other}/verifications/{run_id}/explanation"
+        ).status_code
+        == 404
+    )

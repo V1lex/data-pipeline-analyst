@@ -162,6 +162,37 @@ def create_app(*, repository=None, analyst_client=None, builder=None, generation
             "artifacts": repo().list_artifacts(spec_id),
         }
 
+    @app.get("/api/v1/specifications/{spec_id}/verifications/{run_id}/explanation")
+    def explain_verification(spec_id: UUID, run_id: UUID):
+        from agent.analyst.formal_feedback import FormalFeedbackExplainer
+        from pipeline_spec.models import PipelineSpecification
+        from pydantic import ValidationError
+
+        record = repo().get_specification(spec_id)
+        run = next(
+            (item for item in repo().list_verifications(spec_id) if item["id"] == run_id), None
+        )
+        if run is None:
+            raise PipelineError("NOT_FOUND", "Результат этой проверки не найден.")
+        if run["status"] != "FINISHED" or not run["result_json"]:
+            raise PipelineError(
+                "VERIFICATION_PENDING", "Проверка ещё не завершена.", retryable=True
+            )
+        data = (record.get("context_json") or {}).get("pipeline_specification")
+        if data is None:
+            raise PipelineError(
+                "CONTEXT_REQUIRED", "Для этой старой версии не сохранена полная спецификация."
+            )
+        try:
+            specification = PipelineSpecification.model_validate(data)
+        except ValidationError:
+            raise PipelineError(
+                "CONTEXT_REQUIRED", "Сохранённая спецификация недоступна для объяснения."
+            ) from None
+        return FormalFeedbackExplainer().explain(
+            run["result_json"], specification, spec_id=str(spec_id), revision=record["version"]
+        )
+
     @app.post("/api/v1/specifications/{spec_id}/approve")
     def approve(spec_id: UUID):
         repo().approve_specification(spec_id)

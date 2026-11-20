@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import PipelineGraph from '../components/PipelineGraph.jsx';
-import { artifactUrl } from '../api/client.js';
+import { artifactUrl, request } from '../api/client.js';
 import { Icon } from './icons.jsx';
 
 const names = { DRAFT: 'На согласовании', APPROVED: 'Согласована', QUEUED: 'В очереди', RUNNING: 'Проверяется', PROPERTY_HOLDS: 'Модель проверена', PROPERTY_VIOLATED: 'Найдено нарушение', PROPERTY_UNREACHABLE: 'Состояние недостижимо', MODEL_INVALID: 'Нужно исправить модель', TIMEOUT: 'Проверка не завершилась вовремя', INFRASTRUCTURE_ERROR: 'Проверка недоступна', STATE_LIMIT_REACHED: 'Достигнут лимит состояний' };
@@ -35,6 +35,19 @@ export function SchemaPanel({ state, view, onBuild, onApprove, onVerify, onOpenV
 export function VerificationPanel({ state, view, onVerify, onGenerate }) {
   const run = view.run;
   const result = view.verdict;
+  const [explanation, setExplanation] = useState(null);
+  const [explanationError, setExplanationError] = useState('');
+  useEffect(() => {
+    let active = true;
+    setExplanation(null);
+    setExplanationError('');
+    if (state.specId && run?.id && run.status === 'FINISHED') {
+      request(`/specifications/${state.specId}/verifications/${run.id}/explanation`)
+        .then(data => { if (active) setExplanation(data); })
+        .catch(error => { if (active) setExplanationError(error.message); });
+    }
+    return () => { active = false; };
+  }, [state.specId, run?.id, run?.status]);
   if (!run) return <p className="pa-inspector-muted">Согласуйте спецификацию и запустите проверку модели.</p>;
   const trace = result?.counterexample?.steps || [];
   return <div className="pa-inspector pa-verification">
@@ -43,6 +56,8 @@ export function VerificationPanel({ state, view, onVerify, onGenerate }) {
       <strong>{statusLabel(result?.status || run.status)}</strong>
     </div>
     {view.pending && <p>Результат появится здесь автоматически.</p>}
+    {explanation && <section aria-label="Объяснение проверки"><h3>{explanation.title}</h3><p>{explanation.summary}</p></section>}
+    {explanationError && <p className="pa-inspector-error">Объяснение недоступно: {explanationError}</p>}
     {result?.property_id && <p>Свойство: <code>{result.property_id}</code></p>}
     {result?.error && <p className="pa-inspector-error">{typeof result.error === 'string' ? result.error : JSON.stringify(result.error)}</p>}
     {result?.errors?.length > 0 && <ul className="pa-validation-errors">{result.errors.map((error, index) => <li key={index}><code>{error.location}</code> — {error.message}</li>)}</ul>}
