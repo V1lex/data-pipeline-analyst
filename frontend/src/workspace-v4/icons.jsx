@@ -1,6 +1,7 @@
 const shapes = {
   wave: <path d="M2 14c3 0 3-6 6-6s3 6 6 6 3-6 6-6"/>,
   plus: <path d="M12 5v14M5 12h14"/>,
+  paperclip: <path d="m21 11-8.5 8.5a5.5 5.5 0 0 1-7.8-7.8l9.2-9.2a3.5 3.5 0 0 1 5 5l-9.2 9.2a1.5 1.5 0 0 1-2.1-2.1l8.5-8.5"/>,
   menu: <path d="M4 6h16M4 12h16M4 18h16"/>,
   close: <path d="m6 6 12 12M18 6 6 18"/>,
   schema: <><rect x="9" y="2" width="6" height="5" rx="1"/><path d="M12 7v5M5 17v-5h14v5"/><rect x="2" y="17" width="6" height="5" rx="1"/><rect x="16" y="17" width="6" height="5" rx="1"/></>,

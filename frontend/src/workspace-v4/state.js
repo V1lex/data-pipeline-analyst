@@ -28,7 +28,7 @@ export class WorkspaceController {
     this.generationIds = new Map();
     this.state = {
       projects: [], projectId: null, project: null, specId: null, spec: null,
-      text: '', busy: '', error: '', pendingMessage: null, generated: null,
+      text: '', busy: '', error: '', pendingMessage: null, generated: null, attachments: [],
       loadingProject: false, loadingSpec: false,
     };
   }
@@ -39,6 +39,21 @@ export class WorkspaceController {
     try { if (id) this.storage?.setItem(SELECTION_KEY, id); else this.storage?.removeItem(SELECTION_KEY); } catch { /* storage may be unavailable */ }
   }
   setText(value) { this._set({ text: value }); }
+  attachFiles(files) {
+    if (this.state.busy) return;
+    const accepted = [];
+    for (const file of files) {
+      if (!/\.(csv|json|jsonl|parquet)$/i.test(file.name) || file.size > 10 * 1024 * 1024) {
+        this._set({ error: 'Поддерживаются CSV, JSON, JSONL и Parquet размером до 10 МБ.' });
+        continue;
+      }
+      accepted.push({ id: this.uuid(), file, uploadedId: null });
+    }
+    this._set({ attachments: [...this.state.attachments, ...accepted] });
+  }
+  removeAttachment(id) {
+    if (!this.state.busy) this._set({ attachments: this.state.attachments.filter(item => item.id !== id) });
+  }
   dismissError() { this._set({ error: '' }); }
   async loadProjects({ restore = false } = {}) {
     const revision = this.projectsRevision;
@@ -59,7 +74,7 @@ export class WorkspaceController {
     ++this.specRead;
     this._remember(id);
     this._set({ projectId: id, project: null, specId: null, spec: null, generated: null,
-      text: '', error: '', pendingMessage: null, loadingProject: Boolean(id), loadingSpec: false });
+      text: '', error: '', pendingMessage: null, attachments: [], loadingProject: Boolean(id), loadingSpec: false });
     if (!id) return;
     try {
       const project = await this.api(`/projects/${id}`);
@@ -134,7 +149,7 @@ export class WorkspaceController {
     finally { this._set({ busy: '', pendingMessage: null }); }
   }
   async send() {
-    const content = this.state.text.trim();
+    const content = this.state.text.trim() || (this.state.attachments.length ? 'Проанализируй прикреплённые файлы.' : '');
     if (!content || this.state.busy || this.state.loadingProject) return null;
     return this._perform('Аналитик отвечает…', async () => {
       this._set({ pendingMessage: content });
@@ -148,6 +163,17 @@ export class WorkspaceController {
         this._remember(id);
         this._set({ projectId: id, project: { ...created, messages: [], specifications: [] }, projects: [created, ...this.state.projects] });
       }
+      if (this.state.attachments.length) {
+        for (const item of this.state.attachments) {
+          if (item.uploadedId) continue;
+          const body = new FormData(); body.append('file', item.file); body.append('request_id', item.id);
+          const uploaded = await this.api(`/projects/${id}/sources`, { method: 'POST', body });
+          this._set({ attachments: this.state.attachments.map(entry => entry.id === item.id ? { ...entry, uploadedId: uploaded.id } : entry) });
+        }
+        const selected = await this.api(`/projects/${id}/sources/selection`, { method: 'GET' });
+        const ids = [...new Set([...selected.map(item => item.id), ...this.state.attachments.map(item => item.uploadedId)])];
+        await this.api(`/projects/${id}/sources/selection`, { method: 'PUT', body: { file_ids: ids } });
+      }
       const turn = await this.api(`/projects/${id}/messages`, { method: 'POST', body: { content } });
       // The server acknowledged this turn. A later read failure must never offer
       // the same text as an unsent message and accidentally post it twice.
@@ -155,12 +181,19 @@ export class WorkspaceController {
       const messages = [...(previous?.messages || []), { id: `${id}:ack-user:${previous?.messages?.length || 0}`, role: 'user', content }];
       if (turn.response?.message) messages.push({ id: `${id}:ack-assistant:${messages.length}`, role: 'assistant', content: turn.response.message });
       ++this.specRead;
-      this._set({ text: '', pendingMessage: null, specId: null, spec: null, generated: null,
+      this._set({ text: '', attachments: [], pendingMessage: null, specId: null, spec: null, generated: null,
         project: { ...previous, messages, analyst: turn.response ? { ...previous?.analyst, last_response: turn.response, state: turn.state } : previous?.analyst } });
       const project = await this.api(`/projects/${id}`);
       this._set({ project, text: '', pendingMessage: null, projects: this.state.projects.map(item => item.id === id ? { ...item, name: project.name } : item) });
       return project;
     });
+  }
+  async openRevision(spec) {
+    const projectId = this.state.projectId;
+    ++this.specRead;
+    this._set({ specId: spec.id, spec: { ...spec, verifications: [], artifacts: [] }, generated: null, loadingSpec: false });
+    try { await this.refreshProjectSnapshot(projectId); }
+    catch (error) { this._set({ error: errorText(error) }); }
   }
   async build() {
     if (!this.state.projectId || !selectWorkspace(this.state).canBuild) return null;

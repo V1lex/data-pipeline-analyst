@@ -155,18 +155,18 @@ test('mobile rename failure keeps the form accessible and Escape cancels without
 
 test('uploads a source and restores its profile after reload', async ({page}) => {
   await page.goto('/');
+  await page.locator('input[type=file]').setInputFiles({name:'orders.csv',mimeType:'text/csv',buffer:Buffer.from('город;сумма\nМосква;42\n')});
+  await expect(page.getByLabel('Прикреплённые файлы').getByText('orders.csv')).toBeVisible();
   await page.getByRole('textbox',{name:'Сообщение аналитику'}).fill('Данные о продажах');
   await page.getByRole('textbox',{name:'Сообщение аналитику'}).press('Enter');
   await expect(page.getByText('Требования собраны. Проверьте спецификацию.',{exact:true})).toBeVisible();
   await page.getByRole('button',{name:'Файлы',exact:true}).click();
-  await page.locator('input[type=file]').setInputFiles({name:'orders.csv',mimeType:'text/csv',buffer:Buffer.from('город;сумма\nМосква;42\n')});
-  await expect(page.getByLabel('Использовать orders.csv')).toBeVisible();
-  await page.getByLabel('Использовать orders.csv').check();
+  await expect(page.getByText('orders.csv',{exact:true})).toBeVisible();
   await page.getByRole('button',{name:'Профиль',exact:true}).click();
   await expect(page.getByText('город · string · пропусков в выборке: 0')).toBeVisible();
   await page.reload();
   await page.getByRole('button',{name:'Файлы',exact:true}).click();
-  await expect(page.getByLabel('Использовать orders.csv')).toBeChecked();
+  await expect(page.getByText('orders.csv',{exact:true})).toBeVisible();
 });
 
 test('execution confirmation shows code, maps inputs and displays mocked result', async ({page}) => {
@@ -205,4 +205,33 @@ test('execution confirmation shows code, maps inputs and displays mocked result'
   expect(submitted.parameters).toEqual({'--minimum':'5'});
   await expect(page.getByText('Москва',{exact:true})).toBeVisible();
   await expect(page.getByRole('link',{name:'Скачать CSV'})).toBeVisible();
+});
+
+test('violation, rejection, confirmation and recheck preserve old version (mocked proposal)', async ({page}) => {
+  await page.goto('/');
+  const message = page.getByRole('textbox',{name:'Сообщение аналитику'});
+  await message.fill('Нарушение: проверьте синтетическую модель заказов');
+  await message.press('Enter');
+  await expect(page.getByText('Требования собраны. Проверьте спецификацию.',{exact:true})).toBeVisible();
+  await page.getByRole('button',{name:'Собрать спецификацию',exact:true}).click();
+  await page.getByRole('button',{name:'Согласовать',exact:true}).click();
+  await page.getByRole('button',{name:'Проверить модель',exact:true}).click();
+  await expect(page.locator('.pa-verification-summary')).toHaveText('Найдено нарушение',{timeout:30000});
+  await page.getByRole('button',{name:'Предложить исправление',exact:true}).click();
+  await expect(page.getByText('Добавить проверку данных в переход Read',{exact:true})).toBeVisible();
+  await page.getByRole('button',{name:'Отклонить',exact:true}).click();
+  await expect(page.locator('#specification-version option')).toHaveCount(2);
+  await page.getByRole('button',{name:'Предложить исправление',exact:true}).click();
+  await page.getByRole('button',{name:'Подтвердить исправление',exact:true}).click();
+  await expect(page.locator('#specification-version option')).toHaveCount(3);
+  await expect(page.getByRole('button',{name:'Согласовать',exact:true})).toBeVisible();
+  await page.getByRole('button',{name:'Согласовать',exact:true}).click();
+  await page.getByRole('button',{name:'Проверить модель',exact:true}).click();
+  await expect(page.locator('.pa-verification-summary')).toHaveText('Модель проверена',{timeout:30000});
+  await page.reload();
+  await page.getByRole('button',{name:'Схема',exact:true}).click();
+  await expect(page.locator('#specification-version option')).toHaveCount(3);
+  await page.locator('#specification-version').selectOption({index:1});
+  await page.getByRole('button',{name:'Результат проверки',exact:true}).click();
+  await expect(page.locator('.pa-verification-summary')).toHaveText('Найдено нарушение');
 });

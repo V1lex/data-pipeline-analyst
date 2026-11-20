@@ -212,6 +212,12 @@ def create_app(*, repository=None, analyst_client=None, builder=None, generation
             if len(content) > max_size:
                 raise PipelineError("FILE_TOO_LARGE", "Размер файла превышает допустимый предел.")
             options = {key: form[key] for key in ("delimiter", "encoding") if key in form}
+            try:
+                request_id = UUID(str(form["request_id"])) if "request_id" in form else None
+            except (ValueError, TypeError):
+                raise PipelineError(
+                    "FILE_INVALID", "Некорректный идентификатор загрузки."
+                ) from None
         try:
             with tempfile.TemporaryDirectory(prefix="source_profile_") as directory:
                 path = Path(directory) / "source"
@@ -226,7 +232,7 @@ def create_app(*, repository=None, analyst_client=None, builder=None, generation
         except ProfileError as error:
             raise PipelineError("FILE_INVALID", str(error)) from None
         file_id = repo().store_source_file(
-            project_id, filename, content, profile, max_files=max_files
+            project_id, filename, content, profile, max_files=max_files, file_id=request_id
         )
         return source_profile(project_id, file_id)
 
@@ -276,6 +282,32 @@ def create_app(*, repository=None, analyst_client=None, builder=None, generation
         return FormalFeedbackExplainer().explain(
             run["result_json"], specification, spec_id=str(spec_id), revision=record["version"]
         )
+
+    @app.get("/api/v1/specifications/{spec_id}/verifications/{run_id}/proposals")
+    def latest_revision_proposal(spec_id: UUID, run_id: UUID):
+        from agent.revision import RevisionService
+
+        return RevisionService(repo(), None).latest(spec_id, run_id)
+
+    @app.post("/api/v1/specifications/{spec_id}/verifications/{run_id}/proposals", status_code=201)
+    def propose_revision(spec_id: UUID, run_id: UUID):
+        from agent.revision import RevisionService
+
+        return model_call(lambda: RevisionService(repo(), providers()[0]).propose(spec_id, run_id))
+
+    @app.post("/api/v1/specifications/{spec_id}/proposals/{proposal_id}/accept", status_code=201)
+    def accept_revision(spec_id: UUID, proposal_id: UUID):
+        from agent.revision import RevisionService
+
+        new_id = RevisionService(repo(), None).accept(spec_id, proposal_id)
+        return repo().get_specification(new_id)
+
+    @app.post("/api/v1/specifications/{spec_id}/proposals/{proposal_id}/reject")
+    def reject_revision(spec_id: UUID, proposal_id: UUID):
+        from agent.revision import RevisionService
+
+        RevisionService(repo(), None).reject(spec_id, proposal_id)
+        return {"status": "REJECTED"}
 
     @app.post("/api/v1/specifications/{spec_id}/approve")
     def approve(spec_id: UUID):

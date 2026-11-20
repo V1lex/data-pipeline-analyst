@@ -9,3 +9,7 @@
 .pa-result-table { overflow: auto; max-width: 100%; margin: 12px 0; }
 .pa-result-table table { border-collapse: collapse; width: 100%; font-size: 0.9rem; }
 .pa-result-table th, .pa-result-table td { padding: 8px 10px; text-align: left; border-bottom: 1px solid #deded8; white-space: nowrap; }
+
+.pa-source-name { overflow-wrap: anywhere; }
+.pa-file-row > .pa-text-button { flex: none; white-space: nowrap; }
+.pa-file-preview, .pa-files, .pa-files section { min-width: 0; overflow-wrap: anywhere; }

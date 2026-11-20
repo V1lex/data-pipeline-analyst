@@ -86,9 +86,16 @@ class PostgresRepository:
             )
 
     def store_source_file(
-        self, project_id: UUID, filename: str, content: bytes, profile: dict, *, max_files: int
+        self,
+        project_id: UUID,
+        filename: str,
+        content: bytes,
+        profile: dict,
+        *,
+        max_files: int,
+        file_id: UUID | None = None,
     ) -> UUID:
-        file_id = uuid4()
+        file_id = file_id or uuid4()
         checksum = hashlib.sha256(content).hexdigest()
         profile = {**profile, "file_id": str(file_id), "checksum": checksum}
         fmt = filename.rsplit(".", 1)[-1].lower()
@@ -98,6 +105,19 @@ class PostgresRepository:
                     "SELECT id FROM projects WHERE id=%s FOR UPDATE", (project_id,)
                 ).fetchone()
             )
+            existing = connection.execute(
+                "SELECT project_id,filename,checksum FROM source_files WHERE id=%s", (file_id,)
+            ).fetchone()
+            if existing:
+                if (
+                    existing["project_id"] != project_id
+                    or existing["filename"] != filename
+                    or existing["checksum"] != checksum
+                ):
+                    raise PipelineError(
+                        "FILE_INVALID", "Идентификатор загрузки уже использован для другого файла."
+                    )
+                return file_id
             count = connection.execute(
                 "SELECT count(*) AS count FROM source_files WHERE project_id=%s", (project_id,)
             ).fetchone()["count"]

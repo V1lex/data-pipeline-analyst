@@ -1,6 +1,29 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { WorkspaceController, selectWorkspace } from './state.js';
+import { File } from 'node:buffer';
+
+test('first message uploads attached sources before asking the analyst', async () => {
+  const calls = [];
+  const project = { id: 'p1', name: 'Test', messages: [], specifications: [] };
+  const api = async (path, options = {}) => {
+    calls.push([path, options.method]);
+    if (path === '/projects') return project;
+    if (path.endsWith('/sources') && options.method === 'POST') return { id: 'f1' };
+    if (path.endsWith('/sources/selection') && options.method === 'GET') return [];
+    if (path.endsWith('/sources/selection') && options.method === 'PUT') {
+      assert.deepEqual(options.body.file_ids, ['f1']); return [{ id: 'f1' }];
+    }
+    if (path.endsWith('/messages')) return {};
+    return project;
+  };
+  const store = new WorkspaceController({ api, uuid: () => 'attachment-1' });
+  store.attachFiles([new File(['city\nMoscow'], 'data.csv')]);
+  store.setText('Проанализируй');
+  await store.send();
+  assert.deepEqual(calls.slice(0, 5).map(([path]) => path), ['/projects', '/projects/p1/sources', '/projects/p1/sources/selection', '/projects/p1/sources/selection', '/projects/p1/messages']);
+  assert.equal(store.getSnapshot().attachments.length, 0);
+});
 
 function deferred() {
   let resolve;

@@ -23,6 +23,9 @@ export default function Conversation({
   actions,
   artifacts,
   generated,
+  attachments = [],
+  onAttachFiles,
+  onRemoveAttachment,
 }) {
   // Generated content belongs to the parent-provided artifact and action slots.
   const messages = Array.isArray(project?.messages) ? project.messages : [];
@@ -118,7 +121,7 @@ export default function Conversation({
 
   function handleSubmit(event) {
     event.preventDefault();
-    if (disabled || !text.trim()) return;
+    if (disabled || (!text.trim() && !attachments.length)) return;
     onSend?.(event);
   }
 
@@ -126,7 +129,7 @@ export default function Conversation({
     if (event.key !== 'Enter' || event.shiftKey || composingRef.current
       || event.nativeEvent.isComposing || event.keyCode === 229) return;
     event.preventDefault();
-    if (!disabled && text.trim()) event.currentTarget.form?.requestSubmit();
+    if (!disabled && (text.trim() || attachments.length)) event.currentTarget.form?.requestSubmit();
   }
 
   return (
@@ -221,6 +224,12 @@ export default function Conversation({
           </div>
         )}
         <form className="pa-conversation__composer" onSubmit={handleSubmit} ref={composerRef}>
+          <label className="pa-conversation__attach" title="Прикрепить файлы" aria-label="Прикрепить файлы">
+            <Icon name="paperclip" size={21}/>
+            <input type="file" accept=".csv,.json,.jsonl,.parquet" multiple disabled={disabled} onChange={event => { onAttachFiles?.(Array.from(event.target.files || [])); event.target.value = ''; }}/>
+          </label>
+          <div className="pa-conversation__input-area">
+          {attachments.length > 0 && <div className="pa-conversation__attachments" aria-label="Прикреплённые файлы">{attachments.map(item => <span className="pa-conversation__attachment" key={item.id}><span>{item.file.name}</span><button type="button" disabled={disabled} aria-label={`Убрать ${item.file.name}`} onClick={() => onRemoveAttachment?.(item.id)}><Icon name="close" size={15}/></button></span>)}</div>}
           <label className="pa-conversation__sr-only" htmlFor={textareaId}>Сообщение аналитику</label>
           <textarea
             id={textareaId}
@@ -235,11 +244,12 @@ export default function Conversation({
             maxLength={30000}
             disabled={disabled}
           />
+          </div>
           <button
             className="pa-conversation__send"
             type="submit"
             aria-label="Отправить сообщение"
-            disabled={disabled || !text.trim()}
+            disabled={disabled || (!text.trim() && !attachments.length)}
           >
             <Icon name="arrow-up" size={24}/>
           </button>

@@ -32,11 +32,16 @@ export function SchemaPanel({ state, view, onBuild, onApprove, onVerify, onOpenV
   </div>;
 }
 
-export function VerificationPanel({ state, view, onVerify, onGenerate }) {
+export function VerificationPanel({ state, view, onVerify, onGenerate, onRevisionCreated }) {
   const run = view.run;
   const result = view.verdict;
   const [explanation, setExplanation] = useState(null);
   const [explanationError, setExplanationError] = useState('');
+  const [proposal, setProposal] = useState(null);
+  const [proposalError, setProposalError] = useState('');
+  const [proposalBusy, setProposalBusy] = useState(false);
+  const activeVerification = useRef('');
+  activeVerification.current = `${state.specId || ''}:${run?.id || ''}`;
   useEffect(() => {
     let active = true;
     setExplanation(null);
@@ -48,6 +53,33 @@ export function VerificationPanel({ state, view, onVerify, onGenerate }) {
     }
     return () => { active = false; };
   }, [state.specId, run?.id, run?.status]);
+  const canPropose = ['PROPERTY_VIOLATED', 'PROPERTY_UNREACHABLE'].includes(result?.status);
+  useEffect(() => {
+    let active = true;
+    setProposal(null); setProposalError(''); setProposalBusy(false);
+    if (state.specId && run?.id && canPropose) request(`/specifications/${state.specId}/verifications/${run.id}/proposals`)
+      .then(data => { if (active) setProposal(data); })
+      .catch(error => { if (active) setProposalError(error.message); });
+    return () => { active = false; };
+  }, [state.specId, run?.id, canPropose]);
+  async function proposalAction(action) {
+    const key = activeVerification.current;
+    const specId = state.specId;
+    setProposalBusy(true); setProposalError('');
+    try {
+      if (action === 'create') {
+        const created = await request(`/specifications/${specId}/verifications/${run.id}/proposals`, {method:'POST'});
+        if (activeVerification.current === key) setProposal(created);
+      } else if (action === 'reject') {
+        await request(`/specifications/${specId}/proposals/${proposal.id}/reject`, {method:'POST'});
+        if (activeVerification.current === key) setProposal({...proposal, status:'REJECTED'});
+      } else {
+        const revised = await request(`/specifications/${specId}/proposals/${proposal.id}/accept`, {method:'POST'});
+        if (activeVerification.current === key) await onRevisionCreated(revised);
+      }
+    } catch (error) { if (activeVerification.current === key) setProposalError(error.message); }
+    finally { if (activeVerification.current === key) setProposalBusy(false); }
+  }
   if (!run) return <p className="pa-inspector-muted">Согласуйте спецификацию и запустите проверку модели.</p>;
   const trace = result?.counterexample?.steps || [];
   return <div className="pa-inspector pa-verification">
@@ -62,6 +94,7 @@ export function VerificationPanel({ state, view, onVerify, onGenerate }) {
     {result?.error && <p className="pa-inspector-error">{typeof result.error === 'string' ? result.error : JSON.stringify(result.error)}</p>}
     {result?.errors?.length > 0 && <ul className="pa-validation-errors">{result.errors.map((error, index) => <li key={index}><code>{error.location}</code> — {error.message}</li>)}</ul>}
     {trace.length > 0 && <div className="pa-trace"><h3>Контрпример</h3>{trace.map((step,index) => <details key={index} open={index === 0}><summary>{step.transition || 'Начальное состояние'}</summary><pre>{JSON.stringify(step.state,null,2)}</pre></details>)}</div>}
+    {canPropose && <section aria-label="Исправление модели"><h3>Исправление модели</h3><p>Предложение меняет только переходы формальной модели. Свойства и согласованные данные сохраняются; новая версия потребует отдельной проверки.</p>{proposalError && <p className="pa-inspector-error" role="alert">{proposalError}</p>}{proposal?.status === 'PROPOSED' ? <div><p>{proposal.proposal.issue_summary}</p><p>{proposal.proposal.proposed_change}</p><p>{proposal.proposal.rationale}</p><details open><summary>Изменения переходов</summary><h4>До</h4><pre>{JSON.stringify(proposal.proposal.before_transitions,null,2)}</pre><h4>После</h4><pre>{JSON.stringify(proposal.proposal.after_transitions,null,2)}</pre></details><button className="pa-button pa-button--primary" disabled={proposalBusy || Boolean(state.busy)} onClick={() => proposalAction('accept')}>Подтвердить исправление</button><button className="pa-button" disabled={proposalBusy || Boolean(state.busy)} onClick={() => proposalAction('reject')}>Отклонить</button></div> : <button className="pa-button" disabled={proposalBusy || Boolean(state.busy)} onClick={() => proposalAction('create')}>{proposalBusy ? 'Готовим предложение…' : 'Предложить исправление'}</button>}</section>}
     <div className="pa-inspector-actions">
       {view.verified && <button className="pa-button pa-button--primary" disabled={Boolean(state.busy)} onClick={onGenerate}>{state.generated ? 'Сгенерировать заново' : 'Получить код'}</button>}
       {!view.pending && <button className="pa-button" disabled={Boolean(state.busy)} onClick={onVerify}>Повторить проверку</button>}
@@ -81,19 +114,14 @@ function ResultPreview({ preview }) {
   return <div className="pa-result-table"><table><thead><tr>{columns.map(column => <th key={column} scope="col">{column}</th>)}</tr></thead><tbody>{rows.map((row, index) => <tr key={index}>{columns.map(column => <td key={column}>{row[column] == null ? '—' : String(row[column])}</td>)}</tr>)}</tbody></table></div>;
 }
 
-export function FilesPanel({ state, view, onOpenSchema, onOpenVerification, onGenerate, onSourcesChanged }) {
+export function FilesPanel({ state, view, onOpenSchema, onOpenVerification, onGenerate }) {
   const [preview, setPreview] = useState(null);
   const [content, setContent] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [sources, setSources] = useState([]);
   const [sourceError, setSourceError] = useState('');
-  const [uploading, setUploading] = useState(false);
   const [sourcePreview, setSourcePreview] = useState(null);
-  const [selectedSources, setSelectedSources] = useState([]);
-  const [selecting, setSelecting] = useState(false);
-  const [sourceEncoding, setSourceEncoding] = useState('utf-8-sig');
-  const [sourceDelimiter, setSourceDelimiter] = useState('');
   const [executionRuns, setExecutionRuns] = useState([]);
   const [executionError, setExecutionError] = useState('');
   const [executing, setExecuting] = useState(false);
@@ -105,50 +133,12 @@ export function FilesPanel({ state, view, onOpenSchema, onOpenVerification, onGe
   activeProject.current = state.projectId;
   useEffect(() => {
     let alive = true;
-    setSources([]); setSelectedSources([]); setSourcePreview(null); setSourceError(''); setUploading(false); setSelecting(false);
+    setSources([]); setSourcePreview(null); setSourceError('');
     if (state.projectId) request(`/projects/${state.projectId}/sources`)
       .then(data => { if (alive) setSources(data); })
       .catch(error => { if (alive) setSourceError(error.message); });
-    if (state.projectId) request(`/projects/${state.projectId}/sources/selection`)
-      .then(data => { if (alive) setSelectedSources(data.map(file => file.id)); })
-      .catch(error => { if (alive) setSourceError(error.message); });
     return () => { alive = false; };
   }, [state.projectId]);
-  async function uploadSources(event) {
-    const files = Array.from(event.target.files || []);
-    event.target.value = '';
-    if (!state.projectId || !files.length) return;
-    const projectId = state.projectId;
-    setUploading(true); setSourceError('');
-    try {
-      for (const file of files) {
-        const body = new FormData(); body.append('file', file); body.append('encoding', sourceEncoding);
-        if (sourceDelimiter && file.name.toLowerCase().endsWith('.csv')) body.append('delimiter', sourceDelimiter);
-        await request(`/projects/${projectId}/sources`, { method: 'POST', body });
-      }
-      const updated = await request(`/projects/${projectId}/sources`);
-      if (activeProject.current === projectId) setSources(updated);
-    } catch (error) {
-      if (activeProject.current === projectId) {
-        setSourceError(error.message);
-        try { const updated = await request(`/projects/${projectId}/sources`); if (activeProject.current === projectId) setSources(updated); } catch { /* preserve original error */ }
-      }
-    } finally { if (activeProject.current === projectId) setUploading(false); }
-  }
-  async function selectSource(id, checked) {
-    const projectId = state.projectId;
-    const previous = selectedSources;
-    const ids = checked ? [...previous, id] : previous.filter(item => item !== id);
-    setSelectedSources(ids); setSelecting(true); setSourceError('');
-    try {
-      const selected = await request(`/projects/${projectId}/sources/selection`, { method: 'PUT', body: { file_ids: ids } });
-      if (activeProject.current === projectId) {
-        setSelectedSources(selected.map(file => file.id));
-        try { await onSourcesChanged?.(projectId); } catch { setSourceError('Выбор сохранён, но не удалось обновить диалог.'); }
-      }
-    } catch (error) { if (activeProject.current === projectId) { setSelectedSources(previous); setSourceError(error.message); } }
-    finally { if (activeProject.current === projectId) setSelecting(false); }
-  }
   const specId = state.spec?.id;
   const versionSources = state.spec?.context_json?.source_files || [];
   useEffect(() => {
@@ -213,10 +203,9 @@ export function FilesPanel({ state, view, onOpenSchema, onOpenVerification, onGe
   </div>;
   return <div className="pa-files">
     <h3>Исходные данные</h3>
-    {state.projectId ? <label className="pa-button">{uploading ? 'Загружаем…' : 'Загрузить файлы'}<input type="file" accept=".csv,.json,.jsonl,.parquet" multiple disabled={uploading} onChange={uploadSources} style={{position:'absolute',width:1,height:1,opacity:0}} /></label> : <p className="pa-files-empty">Начните диалог, чтобы загрузить файлы.</p>}
-    {state.projectId && <details><summary>Параметры чтения</summary><label>Кодировка <select value={sourceEncoding} onChange={event => setSourceEncoding(event.target.value)}><option value="utf-8-sig">UTF-8</option><option value="cp1251">Windows-1251</option></select></label><label> Разделитель CSV <select value={sourceDelimiter} onChange={event => setSourceDelimiter(event.target.value)}><option value="">Определить автоматически</option><option value=",">Запятая</option><option value=";">Точка с запятой</option><option value={'\t'}>Табуляция</option><option value="|">Вертикальная черта</option></select></label></details>}
+    <p className="pa-files-empty">Прикрепляйте CSV, JSON, JSONL или Parquet к сообщению с помощью скрепки.</p>
     {sourceError && <p role="alert" className="pa-inspector-error">{sourceError}</p>}
-    {sources.map(source => <div className="pa-file-row" key={source.id}><label><input type="checkbox" checked={selectedSources.includes(source.id)} disabled={selecting || Boolean(state.busy)} onChange={event => selectSource(source.id, event.target.checked)}/><span> Использовать {source.filename}</span></label><button type="button" className="pa-text-button" onClick={() => setSourcePreview(source)}>Профиль</button></div>)}
+    {sources.map(source => <div className="pa-file-row" key={source.id}><Icon name="file" size={20}/><span className="pa-source-name">{source.filename}</span><button type="button" className="pa-text-button" onClick={() => setSourcePreview(source)}>Профиль</button></div>)}
     {executionRuns.length > 0 && <section aria-label="Выполнение конвейера"><h3>Выполнение конвейера</h3>{executionRuns.map(run => <article key={run.id}><strong>{({QUEUED:'В очереди',RUNNING:'Выполняется',SUCCEEDED:'Выполнено',FAILED:'Ошибка выполнения',TIMEOUT:'Превышено время'})[run.status] || run.status}</strong><details><summary>Код и параметры</summary><p>Артефакт: {run.artifact_id}</p><pre>{JSON.stringify({источники:run.inputs, параметры:run.parameters}, null, 2)}</pre></details>{run.error && <pre>{run.error}</pre>}{run.result_preview?.warning && <p>{run.result_preview.warning}</p>}{run.result_preview?.rows && <ResultPreview preview={run.result_preview}/>}{run.status === 'SUCCEEDED' && <p><a href={`/api/v1/specifications/${specId}/executions/${run.id}/result`}>Скачать архив</a>{run.result_preview?.csv_available && <> · <a href={`/api/v1/specifications/${specId}/executions/${run.id}/result.csv`}>Скачать CSV</a></>}</p>}</article>)}</section>}
     {executionError && <p role="alert" className="pa-inspector-error">{executionError}</p>}
     <h3>Артефакты</h3>

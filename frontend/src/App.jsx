@@ -53,9 +53,10 @@ export default function App() {
   }
   async function verify() { if (await store.versionAction('verify')) setDrawer('verification'); }
   async function generate() { if (await store.generate()) setDrawer('files'); }
+  async function revisionCreated(spec) { await store.openRevision(spec); setDrawer('schema'); }
 
   const titles = { schema:'Схема',files:'Файлы',verification:'Результат проверки' };
-  const inspectorProps = {state,view,onBuild:build,onApprove:() => void store.versionAction('approve'),onVerify:verify,onGenerate:generate,onOpenVerification:() => openDrawer('verification'),onOpenSchema:() => openDrawer('schema')};
+  const inspectorProps = {state,view,onBuild:build,onApprove:() => void store.versionAction('approve'),onVerify:verify,onGenerate:generate,onRevisionCreated:revisionCreated,onOpenVerification:() => openDrawer('verification'),onOpenSchema:() => openDrawer('schema')};
   return <div className={`pa-app${drawer ? ' pa-app--drawer-open' : ''}`}>
     <div className="pa-navigation-host" inert={drawer && narrowDrawer ? true : undefined} aria-hidden={drawer && narrowDrawer ? true : undefined}>
       <Navigation projects={state.projects} projectId={state.projectId} busy={state.busy} open={navigationOpen} onSelect={selectProject} onNew={newConversation} onClose={() => setNavigationOpen(false)} onRename={(id,name) => store.renameProject(id,name)} onDelete={async id => { const selected = state.projectId === id; const deleted = await store.deleteProject(id); if (deleted && selected) setDrawer(null); return deleted; }}/>
@@ -69,7 +70,7 @@ export default function App() {
           <button className={`pa-header-action${drawer === 'files' ? ' is-active' : ''}`} onClick={event => openDrawer('files',event)} aria-expanded={drawer === 'files'}><Icon name="file"/><span>Файлы</span></button>
         </div>}
       </header>
-      <Conversation project={state.project} loading={state.loadingProject} text={state.text} busy={state.busy} pendingMessage={state.pendingMessage} error={drawer ? '' : state.error} onTextChange={value => store.setText(value)} onSend={event => { event.preventDefault(); void store.send(); }} onDismissError={() => store.dismissError()}
+      <Conversation project={state.project} loading={state.loadingProject} text={state.text} busy={state.busy} pendingMessage={state.pendingMessage} error={drawer ? '' : state.error} attachments={state.attachments} onAttachFiles={files => store.attachFiles(files)} onRemoveAttachment={id => store.removeAttachment(id)} onTextChange={value => store.setText(value)} onSend={event => { event.preventDefault(); void store.send(); }} onDismissError={() => store.dismissError()}
         artifacts={<ContextualArtifacts spec={state.spec} generated={state.generated} onOpenSpecification={() => openDrawer('schema')} onOpenVerification={() => openDrawer('verification')}/>}
         actions={view.canBuild && !state.specId ? <button className="pa-context-action" disabled={Boolean(state.busy)} onClick={build}><Icon name="schema" size={18}/>Собрать спецификацию</button> : null}/>
     </main>

@@ -242,3 +242,32 @@ class ExecutionRunModel(Base):
     result_csv: Mapped[bytes | None] = mapped_column(LargeBinary)
     result_preview: Mapped[dict | None] = mapped_column(JSONB)
     __table_args__ = (Index("execution_runs_queue", "status", "queued_at", "id"),)
+
+
+class RevisionProposalModel(Base):
+    __tablename__ = "revision_proposals"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    spec_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("specifications.id", ondelete="CASCADE"), nullable=False
+    )
+    run_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("verification_runs.id", ondelete="CASCADE"), nullable=False
+    )
+    base_version: Mapped[int] = mapped_column(Integer, nullable=False)
+    proposal: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    status: Mapped[str] = mapped_column(Text, nullable=False)
+    applied_spec_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("specifications.id", ondelete="CASCADE")
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=text("clock_timestamp()")
+    )
+    __table_args__ = (
+        Index(
+            "one_pending_proposal_per_run",
+            "run_id",
+            unique=True,
+            postgresql_where=text("status='PROPOSED'"),
+        ),
+    )

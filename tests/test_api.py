@@ -342,6 +342,25 @@ def test_upload_and_preview_source_files_are_project_scoped(app_client, reposito
     assert app_client.get(f"/api/v1/projects/{other}/sources/{source['id']}").status_code == 404
 
 
+def test_retried_source_upload_does_not_create_duplicate(app_client):
+    project = app_client.post("/api/v1/projects", json={"name": "Retry"}).json()["id"]
+    request_id = str(uuid4())
+
+    def upload(content):
+        return app_client.post(
+            f"/api/v1/projects/{project}/sources",
+            data={"request_id": request_id},
+            files={"file": ("data.csv", content, "text/csv")},
+        )
+
+    first = upload(b"a,b\n1,2\n")
+    second = upload(b"a,b\n1,2\n")
+    assert first.status_code == second.status_code == 201
+    assert first.json()["id"] == second.json()["id"]
+    assert len(app_client.get(f"/api/v1/projects/{project}/sources").json()) == 1
+    assert upload(b"a,b\n3,4\n").status_code == 422
+
+
 def test_upload_invalid_content_returns_safe_error(app_client, repository):
     project = repository.create_project("Sources")
     response = app_client.post(

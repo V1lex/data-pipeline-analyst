@@ -35,6 +35,7 @@ def upgrade(dsn: str, *, schema: str = "public", revision: str = "head") -> None
                     "property_results",
                     "source_files",
                     "execution_runs",
+                    "revision_proposals",
                 }
             ):
                 raise RuntimeError(
