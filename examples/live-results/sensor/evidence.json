@@ -1,0 +1,213 @@
+{
+  "schema": "live_ce2cdfc04648441a86bb0aa0afbf6397",
+  "project": "ad548bac-fd58-48e7-883a-25eb97916505",
+  "specification": "e7c8e445-4c11-4d80-a9e6-778636994cb6",
+  "run": "a8b0b1fe-68f0-47a7-95f0-903ec39bddf1",
+  "model": {
+    "variables": [
+      {
+        "name": "cleaned",
+        "type": "boolean"
+      },
+      {
+        "name": "aggregated",
+        "type": "boolean"
+      },
+      {
+        "name": "saved",
+        "type": "boolean"
+      }
+    ],
+    "initial": {
+      "cleaned": false,
+      "aggregated": false,
+      "saved": false
+    },
+    "transitions": [
+      {
+        "name": "Complete_cleaned",
+        "guard": {
+          "eq": [
+            {
+              "var": "cleaned"
+            },
+            false
+          ]
+        },
+        "effects": [
+          {
+            "set": [
+              "cleaned",
+              true
+            ]
+          }
+        ]
+      },
+      {
+        "name": "Complete_aggregated",
+        "guard": {
+          "and": [
+            {
+              "eq": [
+                {
+                  "var": "aggregated"
+                },
+                false
+              ]
+            },
+            {
+              "eq": [
+                {
+                  "var": "cleaned"
+                },
+                true
+              ]
+            }
+          ]
+        },
+        "effects": [
+          {
+            "set": [
+              "aggregated",
+              true
+            ]
+          }
+        ]
+      },
+      {
+        "name": "Complete_saved",
+        "guard": {
+          "and": [
+            {
+              "eq": [
+                {
+                  "var": "saved"
+                },
+                false
+              ]
+            },
+            {
+              "eq": [
+                {
+                  "var": "aggregated"
+                },
+                true
+              ]
+            }
+          ]
+        },
+        "effects": [
+          {
+            "set": [
+              "saved",
+              true
+            ]
+          }
+        ]
+      }
+    ],
+    "properties": [
+      {
+        "id": "P1",
+        "type": "invariant",
+        "expression": {
+          "or": [
+            {
+              "eq": [
+                {
+                  "var": "saved"
+                },
+                false
+              ]
+            },
+            {
+              "eq": [
+                {
+                  "var": "aggregated"
+                },
+                true
+              ]
+            }
+          ]
+        }
+      },
+      {
+        "id": "P2",
+        "type": "forbidden_state",
+        "expression": {
+          "and": [
+            {
+              "eq": [
+                {
+                  "var": "saved"
+                },
+                true
+              ]
+            },
+            {
+              "eq": [
+                {
+                  "var": "aggregated"
+                },
+                false
+              ]
+            }
+          ]
+        }
+      },
+      {
+        "id": "P3",
+        "type": "reachable",
+        "expression": {
+          "eq": [
+            {
+              "var": "saved"
+            },
+            true
+          ]
+        }
+      },
+      {
+        "id": "P4",
+        "type": "deadlock_free",
+        "expression": {
+          "eq": [
+            {
+              "var": "saved"
+            },
+            true
+          ]
+        }
+      }
+    ]
+  },
+  "requirements": "Read UTF-8 CSV with header and fields sensor string, temperature double. Drop rows with null or blank sensor or null/unparseable temperature. Negative temperatures are valid; do not drop them. Group by sensor; mean_temperature is average temperature, reading_count is the number of retained rows. Save Parquet to a new destination using errorifexists. CLI paths --readings and --output. Explicit CSV schema; SparkSession stops in finally. Synthetic rows north,10; north,20; south,-5; south,null; blank,100. Expected north: mean 15.0, count 2; south: mean -5.0, count 1. No join or extra business rules.",
+  "verification": {
+    "engine": "TLC",
+    "status": "PROPERTY_HOLDS",
+    "statistics": {
+      "depth": 4,
+      "distinct_states": 4,
+      "states_generated": 4
+    },
+    "checked_properties": [
+      "P3"
+    ]
+  },
+  "artifact": {
+    "answer": "Скрипт читает CSV с заголовком в кодировке UTF-8 по явной схеме (sensor: string, temperature: double), отбрасывает строки с null/пустым (в том числе состоящим из пробелов) sensor и с null temperature (нечитаемое число в режиме PERMISSIVE становится null), при этом отрицательные температуры сохраняются как валидные. Затем группирует по sensor и считает mean_temperature как среднее temperature и reading_count как число оставшихся строк, после чего пишет результат в Parquet в режим errorifexists, то есть только в новое, ещё не существующее место назначения. Пути передаются параметрами командной строки --readings и --output, SparkSession гарантированно останавливается в блоке finally. Никаких join и дополнительных бизнес-правил нет.\n\nНа синтетическом наборе (north,10; north,20; south,-5; south,null; blank,100) скрипт должен дать north: mean_temperature = 15.0, reading_count = 2 и south: mean_temperature = -5.0, reading_count = 1; строка south с null-температурой и строка с пустым sensor отбрасываются.\n\nЗапуск (пример):\n  spark-submit sensor_temperature_mean.py --readings /path/to/readings.csv --output /path/to/new_output_dir\nКаталог --output должен отсутствовать, иначе запись завершится ошибкой по требованию errorifexists. Перед запуском убедитесь, что путь к источнику доступен, а целевой путь новый; скрипт запускается только вручную.",
+    "filename": "sensor_temperature_mean-d67e5ec9210244c6988ddc4f58531e09.py",
+    "requirements": "['Чтение CSV в кодировке UTF-8 с заголовком (header=true).', 'Явная схема входных данных: sensor string, temperature double.', 'Отбрасывать строки с null sensor и с пустым (в т.ч. из пробелов) sensor.', 'Отбрасывать строки с null temperature; нечитаемое число при разборе CSV становится null и также отбрасывается.', 'Отрицательные температуры считать валидными и не отбрасывать.', 'Группировка по sensor; mean_temperature — среднее temperature, reading_count — число оставшихся строк.', 'Запись результата в Parquet в новое место назначения в режиме errorifexists.', 'Пути источника и назначения передавать параметрами командной строки --readings и --output.', 'Останавливать SparkSession в блоке finally.', 'Не добавлять join и иные бизнес-правила.']",
+    "notes": "['TLC проверял только свойства конечной модели (порядок cleaned -> aggregated -> saved и достижимость сохранения) при её допущениях; корректность Python-кода, числовые результаты и реальные данные не проверялись.', 'Ожидаемые значения на синтетическом наборе (north,10; north,20; south,-5; south,null; blank,100): north — mean_temperature 15.0, reading_count 2; south — mean_temperature -5.0, reading_count 1.', 'Согласованная постановка не задаёт политику для значений вида \"NaN\": Spark разбирает их как NaN double, а не как null, поэтому они не отсеиваются правилом «null/unparseable». Если такие значения возможны в реальных данных, требуется уточнение правил.', 'Согласованная постановка не требует обрезки пробелов у sensor для группировки: пробельные значения только отбрасываются, исходное значение sensor в результат попадает без изменений.', 'Каталог --output должен не существовать; при существующем пути запись завершится ошибкой согласно errorifexists.', 'Скрипт не содержит секретов, сетевых вызовов и самозапуска; предназначен для явного запуска пользователем через spark-submit.', 'Проверена модель процесса; корректность сгенерированного кода автоматически не проверялась.']",
+    "provider": "polza",
+    "model": "deepseek/deepseek-v4.1-flash-1017",
+    "code_validation": "not_performed",
+    "status": "GENERATED",
+    "artifact_id": "d67e5ec9-2102-44c6-988d-dc4f58531e09",
+    "spec_id": "e7c8e445-4c11-4d80-a9e6-778636994cb6",
+    "spec_version": "1",
+    "verification_run_id": "a8b0b1fe-68f0-47a7-95f0-903ec39bddf1",
+    "request_id": "94706dff-9a3d-4364-abb2-98a8518e4be8",
+    "context_sha256": "14a4fd4682325709b7d08e72d5f69af67d256313521962894f68c358702a7ead"
+  }
+}

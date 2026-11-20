@@ -1,0 +1,281 @@
+{
+  "schema": "live_ce2cdfc04648441a86bb0aa0afbf6397",
+  "project": "5ce861f9-b697-4e81-a3ff-39ad3032fc55",
+  "specification": "9e158453-9932-41a6-b5cd-8d8e2be8947c",
+  "run": "dfdd4ab9-3a27-4aa9-95f9-3aea83139653",
+  "model": {
+    "variables": [
+      {
+        "name": "orders_checked",
+        "type": "boolean"
+      },
+      {
+        "name": "prices_checked",
+        "type": "boolean"
+      },
+      {
+        "name": "joined",
+        "type": "boolean"
+      },
+      {
+        "name": "aggregated",
+        "type": "boolean"
+      },
+      {
+        "name": "saved",
+        "type": "boolean"
+      }
+    ],
+    "initial": {
+      "orders_checked": false,
+      "prices_checked": false,
+      "joined": false,
+      "aggregated": false,
+      "saved": false
+    },
+    "transitions": [
+      {
+        "name": "Complete_orders_checked",
+        "guard": {
+          "eq": [
+            {
+              "var": "orders_checked"
+            },
+            false
+          ]
+        },
+        "effects": [
+          {
+            "set": [
+              "orders_checked",
+              true
+            ]
+          }
+        ]
+      },
+      {
+        "name": "Complete_prices_checked",
+        "guard": {
+          "eq": [
+            {
+              "var": "prices_checked"
+            },
+            false
+          ]
+        },
+        "effects": [
+          {
+            "set": [
+              "prices_checked",
+              true
+            ]
+          }
+        ]
+      },
+      {
+        "name": "Complete_joined",
+        "guard": {
+          "and": [
+            {
+              "eq": [
+                {
+                  "var": "joined"
+                },
+                false
+              ]
+            },
+            {
+              "eq": [
+                {
+                  "var": "orders_checked"
+                },
+                true
+              ]
+            },
+            {
+              "eq": [
+                {
+                  "var": "prices_checked"
+                },
+                true
+              ]
+            }
+          ]
+        },
+        "effects": [
+          {
+            "set": [
+              "joined",
+              true
+            ]
+          }
+        ]
+      },
+      {
+        "name": "Complete_aggregated",
+        "guard": {
+          "and": [
+            {
+              "eq": [
+                {
+                  "var": "aggregated"
+                },
+                false
+              ]
+            },
+            {
+              "eq": [
+                {
+                  "var": "joined"
+                },
+                true
+              ]
+            }
+          ]
+        },
+        "effects": [
+          {
+            "set": [
+              "aggregated",
+              true
+            ]
+          }
+        ]
+      },
+      {
+        "name": "Complete_saved",
+        "guard": {
+          "and": [
+            {
+              "eq": [
+                {
+                  "var": "saved"
+                },
+                false
+              ]
+            },
+            {
+              "eq": [
+                {
+                  "var": "aggregated"
+                },
+                true
+              ]
+            }
+          ]
+        },
+        "effects": [
+          {
+            "set": [
+              "saved",
+              true
+            ]
+          }
+        ]
+      }
+    ],
+    "properties": [
+      {
+        "id": "P1",
+        "type": "invariant",
+        "expression": {
+          "or": [
+            {
+              "eq": [
+                {
+                  "var": "saved"
+                },
+                false
+              ]
+            },
+            {
+              "eq": [
+                {
+                  "var": "aggregated"
+                },
+                true
+              ]
+            }
+          ]
+        }
+      },
+      {
+        "id": "P2",
+        "type": "forbidden_state",
+        "expression": {
+          "and": [
+            {
+              "eq": [
+                {
+                  "var": "saved"
+                },
+                true
+              ]
+            },
+            {
+              "eq": [
+                {
+                  "var": "aggregated"
+                },
+                false
+              ]
+            }
+          ]
+        }
+      },
+      {
+        "id": "P3",
+        "type": "reachable",
+        "expression": {
+          "eq": [
+            {
+              "var": "saved"
+            },
+            true
+          ]
+        }
+      },
+      {
+        "id": "P4",
+        "type": "deadlock_free",
+        "expression": {
+          "eq": [
+            {
+              "var": "saved"
+            },
+            true
+          ]
+        }
+      }
+    ]
+  },
+  "requirements": "Read UTF-8 CSV with headers. Orders fields: product_id string, quantity decimal(18,2), city string. Prices fields: product_id string, price decimal(18,2). Require every listed field to be non-null, and string fields non-blank; require unique product_id in prices. On either validation failure stop without writing output. Finish both independent validations before joining. Inner join orders and prices on product_id; an order without a price is excluded. line_revenue = quantity * price; sum by city into revenue. Save Parquet to a new destination with errorifexists, never overwrite. Accept input/output paths as --orders, --prices, --output. Use explicit CSV schemas and stop SparkSession in finally. Test orders (A,2,Москва),(A,1,Москва),(B,3,Казань); prices (A,100),(B,50); expected Москва=300, Казань=150, irrespective of row order.",
+  "verification": {
+    "engine": "TLC",
+    "status": "PROPERTY_HOLDS",
+    "statistics": {
+      "depth": 6,
+      "distinct_states": 7,
+      "states_generated": 8
+    },
+    "checked_properties": [
+      "P3"
+    ]
+  },
+  "artifact": {
+    "answer": "Скрипт считает суммарную выручку по городам из двух CSV-файлов и сохраняет результат в Parquet.\n\nЧто делает пайплайн:\n1. Читает `--orders` и `--prices` как UTF-8 CSV с заголовками и явными схемами: orders — `product_id string, quantity decimal(18,2), city string`; prices — `product_id string, price decimal(18,2)`.\n2. Выполняет две НЕЗАВИСИМЫЕ проверки, обе до джойна: в каждом наборе все перечисленные поля обязаны быть не NULL, строковые поля — не пустыми после trim; в prices дополнительно проверяется уникальность `product_id` (при нарушении печатаются примеры дублей).\n3. Если хотя бы одна проверка не прошла, скрипт печатает все найденные ошибки в stderr и завершается с ошибкой, НЕ записывая результат.\n4. Только после успешных проверок делает INNER JOIN orders и prices по `product_id` (заказ без цены отбрасывается), считает `line_revenue = quantity * price` и суммирует её по `city` в колонку `revenue`.\n5. Пишет Parquet в `--output` в режиме `errorifexists`, то есть в новый каталог; существующий каталог никогда не перезаписывается — Spark упадёт с ошибкой.\n6. Результат дополнительно печатается в консоль (для сверки: на тестовых данных ожидается Москва=300, Казань=150, порядок строк входа не важен), SparkSession закрывается в `finally`.\n\nЗапуск (явно, вручную, через spark-submit из вашего окружения PySpark 3.5.8):\n\n    spark-submit orders_revenue_by_city.py \\\n        --orders /path/to/orders.csv \\\n        --prices /path/to/prices.csv \\\n        --output /path/to/new_output_dir\n\nПути к данным и назначению передаются только параметрами командной строки; никаких секретов, сетевых вызовов и самозапуска в скрипте нет. Проверка свойств TLC относилась к конечной модели (сохранение только после агрегации, отсутствие запрещённого состояния «сохранено без агрегации»); корректность Python-кода, числовые результаты и реальные данные этой проверкой не подтверждались.",
+    "filename": "orders_revenue_by_city-ac8cc88bc378450190105c2387be1dff.py",
+    "requirements": "['Читать входные CSV в UTF-8 с заголовками и явными схемами: orders(product_id string, quantity decimal(18,2), city string), prices(product_id string, price decimal(18,2)).', 'Требовать не-null для всех перечисленных полей и непустые (после trim) значения для строковых полей в обоих наборах.', 'Требовать уникальность product_id в prices.', 'При любом нарушении валидации останавливаться без записи результата.', 'Обе независимые проверки (orders и prices) завершать до джойна.', 'Соединять orders и prices внутренним join по product_id; заказ без цены исключается.', 'Вычислять line_revenue = quantity * price и суммировать по city в колонку revenue.', 'Сохранять результат в Parquet в новый каталог с режимом errorifexists, без перезаписи.', 'Принимать пути --orders, --prices, --output параметрами командной строки.', 'Завершать SparkSession в finally.']",
+    "notes": "['Валидация выполняется одним агрегирующим запросом на набор; проверка уникальности prices.product_id — отдельными агрегатами по тому же набору. Обе проверки запускаются до join, исключение бросается только после сбора всех ошибок.', 'При PERMISSIVE-разборе CSV некорректные числовые значения становятся NULL и затем отлавливаются проверкой на NULL.', 'Тип revenue — decimal(38,4), как следствие decimal(18,2) * decimal(18,2) (decimal(36,4)) и SUM по decimal.', 'Добавлена сортировка результата по city (orderBy) — она влияет только на порядок строк в выводе, не на значения revenue.', 'Режим errorifexists гарантирует отказ при существующем каталоге; отдельная предварительная проверка существования пути не выполняется, отказ произойдёт на этапе записи — уже после успешной валидации и агрегации, без перезаписи данных.', 'Результат дополнительно печатается через show для сверки; на тестовых данных ожидается Москва=300, Казань=150. Значения показываются в масштабе decimal (например, 300.0000).', 'Секреты, сетевые вызовы, установка пакетов и самозапуск отсутствуют; скрипт запускается пользователем явно.', 'Проверка TLC относилась только к конечной модели поведения (свойство P3 и инварианты порядка), а не к корректности Python-кода, числовым результатам или реальным данным.', 'Проверена модель процесса; корректность сгенерированного кода автоматически не проверялась.']",
+    "provider": "polza",
+    "model": "deepseek/deepseek-v4.1-flash-1017",
+    "code_validation": "not_performed",
+    "status": "GENERATED",
+    "artifact_id": "ac8cc88b-c378-4501-9010-5c2387be1dff",
+    "spec_id": "9e158453-9932-41a6-b5cd-8d8e2be8947c",
+    "spec_version": "1",
+    "verification_run_id": "dfdd4ab9-3a27-4aa9-95f9-3aea83139653",
+    "request_id": "955045a1-582f-44a9-ba72-78c9574393f4",
+    "context_sha256": "5f9d6162215d0641daeedd7a95820ac0e2884f99a44853434efc2f4506da060e"
+  }
+}
