@@ -366,3 +366,53 @@ def test_select_source_files_via_api(app_client, repository):
     assert app_client.get(f"/api/v1/projects/{project}/sources/selection").json()[0]["id"] == str(
         source
     )
+
+
+def test_execution_api_requires_verified_saved_artifact_and_queues_idempotently(
+    app_client, repository
+):
+    from test_execution_storage import prepared
+
+    _, spec, source, artifact = prepared(repository)
+    request_id = uuid4()
+    payload = {
+        "artifact_id": str(artifact),
+        "request_id": str(request_id),
+        "inputs": {"--orders": str(source)},
+    }
+    response = app_client.post(f"/api/v1/specifications/{spec}/executions", json=payload)
+    assert response.status_code == 202, response.text
+    assert response.json()["id"] == str(request_id)
+    assert (
+        app_client.post(f"/api/v1/specifications/{spec}/executions", json=payload).status_code
+        == 202
+    )
+    history = app_client.get(f"/api/v1/specifications/{spec}/executions")
+    assert len(history.json()) == 1 and history.json()[0]["status"] == "QUEUED"
+
+
+def test_execution_result_and_csv_download_only_when_ready(app_client, repository):
+    from execution.storage import ExecutionStore
+    from test_execution_storage import prepared
+
+    _, spec, source, artifact = prepared(repository)
+    store = ExecutionStore(repository)
+    run = store.enqueue(spec, artifact, {"--orders": source}, uuid4())
+    assert (
+        app_client.get(f"/api/v1/specifications/{spec}/executions/{run}/result").status_code == 409
+    )
+    attempt = store.claim()
+    store.finish(
+        run,
+        attempt["lease_token"],
+        "SUCCEEDED",
+        archive=b"zip-data",
+        csv_data=b"a,b\n1,2\n",
+        preview={"rows": []},
+    )
+    assert (
+        app_client.get(f"/api/v1/specifications/{spec}/executions/{run}/result").content
+        == b"zip-data"
+    )
+    csv = app_client.get(f"/api/v1/specifications/{spec}/executions/{run}/result.csv")
+    assert csv.status_code == 200 and csv.content == b"a,b\n1,2\n"

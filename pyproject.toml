@@ -17,7 +17,7 @@ data-pipeline-backend = { workspace = true }
 testpaths = ["tests", "backend/src/agent/analyst/tests", "backend/src/pipeline_spec/tests", "backend/src/compiler/formal_check/tests"]
 pythonpath = ["backend/src", "."]
 addopts = "-ra"
-markers = ["postgres: requires TEST_DATABASE_URL", "spark: explicit local synthetic-data demonstration"]
+markers = ["postgres: requires TEST_DATABASE_URL", "spark: explicit local synthetic-data demonstration", "docker: requires an isolated Docker runtime image"]
 
 [tool.ruff]
 extend-exclude = ["examples/live-results"]

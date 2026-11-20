@@ -5,3 +5,7 @@
 @media(max-width:1100px){.pa-topbar{padding:0 24px}.pa-graph{height:360px}}@media(max-width:900px){.pa-menu-button{display:inline-flex}.pa-topbar{min-height:65px;padding:0 16px;gap:8px}.pa-conversation-title{font-size:15px}.pa-header-action{gap:7px;padding:8px;font-size:13px}.pa-header-actions{gap:2px}}@media(max-width:520px){.pa-topbar{min-height:60px;padding:0 10px}.pa-header-action{font-size:0;gap:0;padding:10px}.pa-header-action span{position:absolute;clip-path:inset(50%);width:1px;height:1px;overflow:hidden}.pa-header-actions{gap:2px}.pa-conversation-title{font-size:14px}.pa-graph{height:300px}.pa-version-picker{align-items:flex-start;flex-direction:column;gap:7px}.pa-version-picker select{width:100%}}@media(prefers-reduced-motion:reduce){*,*::before,*::after{scroll-behavior:auto!important;animation-duration:0s!important;transition-duration:0s!important}}
 
 .pa-drawer-error{margin:16px 0 20px;padding:13px 15px;border:1px solid #e2d1c8;border-radius:10px;background:#faf2ed;color:#814d3c;font-size:13px;line-height:1.7}.pa-drawer-error p{white-space:pre-wrap;overflow-wrap:anywhere;margin:0 0 6px}.pa-drawer-error button{color:inherit}
+
+.pa-result-table { overflow: auto; max-width: 100%; margin: 12px 0; }
+.pa-result-table table { border-collapse: collapse; width: 100%; font-size: 0.9rem; }
+.pa-result-table th, .pa-result-table td { padding: 8px 10px; text-align: left; border-bottom: 1px solid #deded8; white-space: nowrap; }

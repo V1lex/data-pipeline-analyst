@@ -20,7 +20,7 @@ spark = ["pyspark==3.5.8"]
 team = []
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/agent", "src/compiler", "src/pipeline_generator", "src/pipeline_spec", "src/validator", "src/db", "src/api", "src/file_data"]
+packages = ["src/agent", "src/compiler", "src/pipeline_generator", "src/pipeline_spec", "src/validator", "src/db", "src/api", "src/file_data", "src/execution"]
 
 
 [tool.hatch.build.targets.wheel.force-include]

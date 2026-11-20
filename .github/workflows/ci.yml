@@ -117,3 +117,35 @@ jobs:
             frontend/test-results
             /tmp/qa-api.log
             /tmp/qa-ui.log
+
+  isolated-spark:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: pipeline
+          POSTGRES_PASSWORD: test-password
+          POSTGRES_DB: pipeline_test
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U pipeline -d pipeline_test"
+          --health-interval 5s --health-timeout 5s --health-retries 12
+    env:
+      TEST_DATABASE_URL: postgresql://pipeline:test-password@localhost:5432/pipeline_test
+      RUN_DOCKER_TESTS: '1'
+      TLC_WORKERS: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - run: uv sync --frozen --extra dev
+      - run: python scripts/download_tlc.py
+      - run: docker build -t dpa-spark-runner:local executor
+      - run: uv run pytest tests/test_execution_real.py -q

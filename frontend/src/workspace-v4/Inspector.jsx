@@ -74,6 +74,13 @@ export function VerificationPanel({ state, view, onVerify, onGenerate }) {
   </div>;
 }
 
+function ResultPreview({ preview }) {
+  const rows = preview?.rows || [];
+  if (!rows.length) return <p>В предпросмотре нет строк.</p>;
+  const columns = preview.columns?.map(column => column.name) || Object.keys(rows[0]);
+  return <div className="pa-result-table"><table><thead><tr>{columns.map(column => <th key={column} scope="col">{column}</th>)}</tr></thead><tbody>{rows.map((row, index) => <tr key={index}>{columns.map(column => <td key={column}>{row[column] == null ? '—' : String(row[column])}</td>)}</tr>)}</tbody></table></div>;
+}
+
 export function FilesPanel({ state, view, onOpenSchema, onOpenVerification, onGenerate, onSourcesChanged }) {
   const [preview, setPreview] = useState(null);
   const [content, setContent] = useState('');
@@ -87,6 +94,13 @@ export function FilesPanel({ state, view, onOpenSchema, onOpenVerification, onGe
   const [selecting, setSelecting] = useState(false);
   const [sourceEncoding, setSourceEncoding] = useState('utf-8-sig');
   const [sourceDelimiter, setSourceDelimiter] = useState('');
+  const [executionRuns, setExecutionRuns] = useState([]);
+  const [executionError, setExecutionError] = useState('');
+  const [executing, setExecuting] = useState(false);
+  const [preparingExecution, setPreparingExecution] = useState(false);
+  const [executionInputs, setExecutionInputs] = useState({});
+  const [extraParameters, setExtraParameters] = useState([]);
+  const executionRequest = useRef(null);
   const activeProject = useRef(state.projectId);
   activeProject.current = state.projectId;
   useEffect(() => {
@@ -136,6 +150,48 @@ export function FilesPanel({ state, view, onOpenSchema, onOpenVerification, onGe
     finally { if (activeProject.current === projectId) setSelecting(false); }
   }
   const specId = state.spec?.id;
+  const versionSources = state.spec?.context_json?.source_files || [];
+  useEffect(() => {
+    let alive = true;
+    setExecutionRuns([]); setExecutionError('');
+    if (!specId) return () => { alive = false; };
+    const refresh = () => request(`/specifications/${specId}/executions`)
+      .then(runs => { if (alive) setExecutionRuns(runs); })
+      .catch(error => { if (alive) setExecutionError(error.message); });
+    void refresh();
+    const timer = setInterval(refresh, 2500);
+    return () => { alive = false; clearInterval(timer); };
+  }, [specId]);
+  function prepareExecution() {
+    const flags = {};
+    versionSources.forEach((file, index) => {
+      const stem = file.filename.replace(/\.[^.]+$/, '').toLowerCase().replace(/[^a-z0-9-]/g, '-').replace(/^-+|-+$/g, '');
+      flags[file.id] = `--${/^[a-z]/.test(stem) ? stem.slice(0, 35) : `input-${index + 1}`}`;
+    });
+    setExecutionInputs(flags); setExtraParameters([]); setExecutionError(''); setPreparingExecution(true);
+  }
+  async function confirmExecution() {
+    const pairs = versionSources.map(file => [executionInputs[file.id]?.trim(), file.id]);
+    if (pairs.some(([flag]) => !/^--[a-z][a-z0-9-]{0,40}$/.test(flag || '') || flag === '--output') || new Set(pairs.map(([flag]) => flag)).size !== pairs.length) {
+      setExecutionError('Укажите разные аргументы вида --orders; --output задаётся автоматически.'); return;
+    }
+    const extras = extraParameters.map(item => [item.flag.trim(), item.value]);
+    const names = [...pairs.map(([flag]) => flag), ...extras.map(([flag]) => flag)];
+    if (extras.some(([flag, value]) => !/^--[a-z][a-z0-9-]{0,40}$/.test(flag) || flag === '--output' || value.length > 512 || value.includes('\0')) || new Set(names).size !== names.length) {
+      setExecutionError('Дополнительные аргументы должны иметь уникальные имена и значения длиной до 512 символов.'); return;
+    }
+    const inputs = Object.fromEntries(pairs);
+    const parameters = Object.fromEntries(extras);
+    const key = JSON.stringify([specId, preview.id, inputs, parameters]);
+    if (executionRequest.current?.key !== key) executionRequest.current = { key, id: crypto.randomUUID() };
+    setExecuting(true); setExecutionError('');
+    try {
+      await request(`/specifications/${specId}/executions`, { method: 'POST', body: { artifact_id: preview.id, request_id: executionRequest.current.id, inputs, parameters } });
+      executionRequest.current = null; setPreparingExecution(false); setPreview(null);
+      setExecutionRuns(await request(`/specifications/${specId}/executions`));
+    } catch (error) { setExecutionError(error.message); }
+    finally { setExecuting(false); }
+  }
   const generated = state.generated?.spec_id === specId ? state.generated : null;
   const artifacts = new Map((state.spec?.artifacts || []).filter(file => file.spec_id === specId).map(file => [file.id,file]));
   if (generated) artifacts.set(generated.artifact_id,{id:generated.artifact_id,spec_id:generated.spec_id,filename:generated.filename});
@@ -150,14 +206,19 @@ export function FilesPanel({ state, view, onOpenSchema, onOpenVerification, onGe
     }).then(text => { if (alive) setContent(text); }).catch(error => alive && setError(error.message)).finally(() => alive && setLoading(false));
     return () => { alive = false; };
   },[preview?.id,specId,generated?.artifact_id]);
-  if (sourcePreview) return <div className="pa-file-preview"><button className="pa-text-button" onClick={() => setSourcePreview(null)}>← К файлам</button><h3>{sourcePreview.filename}</h3><p>Профиль по выборке: {sourcePreview.profile.sampled_rows} строк. Типы являются предварительными, кроме схемы Parquet.</p><h4>Колонки</h4><ul>{sourcePreview.profile.columns.map(column => <li key={column.name}>{column.name} · {column.type} · пропусков в выборке: {column.null_count}</li>)}</ul><h4>Образец строк</h4><pre>{JSON.stringify(sourcePreview.profile.sample, null, 2)}</pre>{sourcePreview.profile.warnings?.map(warning => <p key={warning}>{warning}</p>)}</div>;
-  if (preview) return <div className="pa-file-preview"><button className="pa-text-button" onClick={() => setPreview(null)}>← К файлам</button><h3>{preview.filename}</h3>{loading && <p role="status">Открываем файл…</p>}{error && <p role="alert">{error}</p>}{!loading && !error && <pre>{content}</pre>}<a className="pa-button" href={artifactUrl(specId,preview.id)}><Icon name="download" size={16}/>Скачать .py</a></div>;
+  if (sourcePreview) return <div className="pa-file-preview"><button className="pa-text-button" onClick={() => setSourcePreview(null)}>← К файлам</button><h3>{sourcePreview.filename}</h3><p>Профиль по выборке: {sourcePreview.profile.sampled_rows} строк. Типы являются предварительными, кроме схемы Parquet.</p><h4>Колонки</h4><ul>{sourcePreview.profile.columns.map(column => <li key={column.name}>{column.name} · {column.type} · пропусков в выборке: {column.null_count}</li>)}</ul><h4>Образец строк</h4><ResultPreview preview={{columns:sourcePreview.profile.columns, rows:sourcePreview.profile.sample}}/>{sourcePreview.profile.warnings?.map(warning => <p key={warning}>{warning}</p>)}</div>;
+  if (preview) return <div className="pa-file-preview"><button className="pa-text-button" onClick={() => { setPreview(null); setPreparingExecution(false); }}>← К файлам</button><h3>{preview.filename}</h3>{loading && <p role="status">Открываем файл…</p>}{error && <p role="alert">{error}</p>}{!loading && !error && <pre>{content}</pre>}<a className="pa-button" href={artifactUrl(specId,preview.id)}><Icon name="download" size={16}/>Скачать .py</a>
+    {view.verified && versionSources.length > 0 && !preparingExecution && <button className="pa-button pa-button--primary" disabled={loading || Boolean(error)} onClick={prepareExecution}>Подготовить запуск</button>}
+    {preparingExecution && <section aria-label="Подтверждение запуска"><h3>Подтвердите выполнение</h3><p>Проверьте код выше и укажите аргумент каждого файла. Результат будет сохранён отдельно от проверки TLC.</p>{versionSources.map(file => <label key={file.id}>{file.filename} <input value={executionInputs[file.id] || ''} onChange={event => setExecutionInputs({...executionInputs, [file.id]: event.target.value})} aria-label={`Аргумент для ${file.filename}`}/></label>)}<p>Аргумент --output будет задан автоматически.</p><h4>Дополнительные параметры</h4>{extraParameters.map((item, index) => <div key={index}><label>Аргумент <input value={item.flag} onChange={event => setExtraParameters(extraParameters.map((row, i) => i === index ? {...row, flag:event.target.value} : row))} placeholder="--minimum"/></label><label> Значение <input value={item.value} onChange={event => setExtraParameters(extraParameters.map((row, i) => i === index ? {...row, value:event.target.value} : row))}/></label><button type="button" className="pa-text-button" onClick={() => setExtraParameters(extraParameters.filter((_, i) => i !== index))}>Удалить</button></div>)}<button type="button" className="pa-text-button" disabled={extraParameters.length >= 20} onClick={() => setExtraParameters([...extraParameters, {flag:'', value:''}])}>Добавить параметр</button>{executionError && <p role="alert">{executionError}</p>}<button className="pa-button pa-button--primary" disabled={executing} onClick={confirmExecution}>{executing ? 'Отправляем…' : 'Подтвердить запуск'}</button><button className="pa-button" disabled={executing} onClick={() => setPreparingExecution(false)}>Отмена</button></section>}
+  </div>;
   return <div className="pa-files">
     <h3>Исходные данные</h3>
     {state.projectId ? <label className="pa-button">{uploading ? 'Загружаем…' : 'Загрузить файлы'}<input type="file" accept=".csv,.json,.jsonl,.parquet" multiple disabled={uploading} onChange={uploadSources} style={{position:'absolute',width:1,height:1,opacity:0}} /></label> : <p className="pa-files-empty">Начните диалог, чтобы загрузить файлы.</p>}
     {state.projectId && <details><summary>Параметры чтения</summary><label>Кодировка <select value={sourceEncoding} onChange={event => setSourceEncoding(event.target.value)}><option value="utf-8-sig">UTF-8</option><option value="cp1251">Windows-1251</option></select></label><label> Разделитель CSV <select value={sourceDelimiter} onChange={event => setSourceDelimiter(event.target.value)}><option value="">Определить автоматически</option><option value=",">Запятая</option><option value=";">Точка с запятой</option><option value={'\t'}>Табуляция</option><option value="|">Вертикальная черта</option></select></label></details>}
     {sourceError && <p role="alert" className="pa-inspector-error">{sourceError}</p>}
     {sources.map(source => <div className="pa-file-row" key={source.id}><label><input type="checkbox" checked={selectedSources.includes(source.id)} disabled={selecting || Boolean(state.busy)} onChange={event => selectSource(source.id, event.target.checked)}/><span> Использовать {source.filename}</span></label><button type="button" className="pa-text-button" onClick={() => setSourcePreview(source)}>Профиль</button></div>)}
+    {executionRuns.length > 0 && <section aria-label="Выполнение конвейера"><h3>Выполнение конвейера</h3>{executionRuns.map(run => <article key={run.id}><strong>{({QUEUED:'В очереди',RUNNING:'Выполняется',SUCCEEDED:'Выполнено',FAILED:'Ошибка выполнения',TIMEOUT:'Превышено время'})[run.status] || run.status}</strong><details><summary>Код и параметры</summary><p>Артефакт: {run.artifact_id}</p><pre>{JSON.stringify({источники:run.inputs, параметры:run.parameters}, null, 2)}</pre></details>{run.error && <pre>{run.error}</pre>}{run.result_preview?.warning && <p>{run.result_preview.warning}</p>}{run.result_preview?.rows && <ResultPreview preview={run.result_preview}/>}{run.status === 'SUCCEEDED' && <p><a href={`/api/v1/specifications/${specId}/executions/${run.id}/result`}>Скачать архив</a>{run.result_preview?.csv_available && <> · <a href={`/api/v1/specifications/${specId}/executions/${run.id}/result.csv`}>Скачать CSV</a></>}</p>}</article>)}</section>}
+    {executionError && <p role="alert" className="pa-inspector-error">{executionError}</p>}
     <h3>Артефакты</h3>
     {(state.spec || view.pipeline) && <button className="pa-file-row" type="button" onClick={onOpenSchema}><Icon name="file" size={24}/><span>Спецификация</span><small>Открыть</small></button>}
     {[...artifacts.values()].map(file => <div className="pa-file-row" key={file.id}><Icon name="code" size={24}/><button className="pa-file-name" onClick={() => setPreview(file)}>{file.filename}</button><a className="pa-file-download" href={artifactUrl(file.spec_id,file.id)} aria-label={`Скачать ${file.filename}`} title="Скачать"><Icon name="download" size={20}/></a></div>)}

@@ -27,3 +27,10 @@ class GenerationRequest(BaseModel):
 
 class SourceSelectionRequest(BaseModel):
     file_ids: list[UUID] = Field(max_length=100)
+
+
+class ExecutionRequest(BaseModel):
+    artifact_id: UUID
+    request_id: UUID
+    inputs: dict[str, UUID] = Field(min_length=1, max_length=20)
+    parameters: dict[str, str] = Field(default_factory=dict, max_length=20)

@@ -210,3 +210,35 @@ class SourceFileModel(Base):
         DateTime(timezone=True), nullable=False, server_default=text("clock_timestamp()")
     )
     __table_args__ = (Index("source_files_project_created", "project_id", "created_at", "id"),)
+
+
+class ExecutionRunModel(Base):
+    __tablename__ = "execution_runs"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    spec_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("specifications.id", ondelete="CASCADE"), nullable=False
+    )
+    artifact_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("artifacts.id", ondelete="CASCADE"), nullable=False
+    )
+    verification_run_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("verification_runs.id", ondelete="CASCADE"), nullable=False
+    )
+    inputs: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    parameters: Mapped[dict] = mapped_column(
+        JSONB, nullable=False, server_default=text("'{}'::jsonb")
+    )
+    status: Mapped[str] = mapped_column(Text, nullable=False)
+    queued_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=text("clock_timestamp()")
+    )
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    lease_token: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
+    lease_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    error: Mapped[str | None] = mapped_column(Text)
+    result_archive: Mapped[bytes | None] = mapped_column(LargeBinary)
+    result_csv: Mapped[bytes | None] = mapped_column(LargeBinary)
+    result_preview: Mapped[dict | None] = mapped_column(JSONB)
+    __table_args__ = (Index("execution_runs_queue", "status", "queued_at", "id"),)

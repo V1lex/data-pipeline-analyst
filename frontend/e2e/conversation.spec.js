@@ -168,3 +168,41 @@ test('uploads a source and restores its profile after reload', async ({page}) =>
   await page.getByRole('button',{name:'Файлы',exact:true}).click();
   await expect(page.getByLabel('Использовать orders.csv')).toBeChecked();
 });
+
+test('execution confirmation shows code, maps inputs and displays mocked result', async ({page}) => {
+  const sourceId = '00000000-0000-4000-8000-000000000001';
+  let submitted = null;
+  await page.route('**/api/v1/specifications/*', async route => {
+    const response = await route.fetch();
+    if (route.request().method() !== 'GET' || !response.ok()) return route.fulfill({response});
+    const body = await response.json();
+    body.context_json = {...body.context_json, source_files:[{id:sourceId,filename:'orders.csv'}]};
+    await route.fulfill({response,json:body});
+  });
+  await page.route('**/api/v1/specifications/*/executions', async route => {
+    if (route.request().method() === 'POST') {
+      submitted = route.request().postDataJSON();
+      return route.fulfill({status:202,json:{id:submitted.request_id,status:'QUEUED'}});
+    }
+    const runs = submitted ? [{id:submitted.request_id,status:'SUCCEEDED',artifact_id:submitted.artifact_id,inputs:submitted.inputs,parameters:submitted.parameters,result_preview:{rows:[{city:'Москва',revenue:300}],csv_available:true}}] : [];
+    return route.fulfill({status:200,json:runs});
+  });
+  await prepare(page);
+  await page.getByRole('button',{name:'Согласовать',exact:true}).click();
+  await page.getByRole('button',{name:'Проверить модель',exact:true}).click();
+  await expect(page.locator('.pa-verification-summary')).toHaveText('Модель проверена',{timeout:30000});
+  await page.getByRole('button',{name:'Получить код',exact:true}).click();
+  await page.locator('.pa-file-name').click();
+  await expect(page.locator('.pa-file-preview pre')).toHaveText('print(1)\n');
+  await page.getByRole('button',{name:'Подготовить запуск',exact:true}).click();
+  await expect(page.getByLabel('Аргумент для orders.csv')).toHaveValue('--orders');
+  await page.getByRole('button',{name:'Добавить параметр',exact:true}).click();
+  await page.getByLabel('Аргумент', {exact:true}).fill('--minimum');
+  await page.getByLabel('Значение', {exact:true}).fill('5');
+  await page.getByRole('button',{name:'Подтвердить запуск',exact:true}).click();
+  await expect(page.getByText('Выполнено',{exact:true})).toBeVisible();
+  expect(submitted.inputs).toEqual({'--orders':sourceId});
+  expect(submitted.parameters).toEqual({'--minimum':'5'});
+  await expect(page.getByText('Москва',{exact:true})).toBeVisible();
+  await expect(page.getByRole('link',{name:'Скачать CSV'})).toBeVisible();
+});

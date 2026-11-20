@@ -21,6 +21,7 @@ from pipeline_generator.service import GenerationService
 from pipeline_generator.storage import PostgresRepository
 
 from api.schemas import (
+    ExecutionRequest,
     GenerationRequest,
     MessageRequest,
     ProjectRenameRequest,
@@ -295,6 +296,59 @@ def create_app(*, repository=None, analyst_client=None, builder=None, generation
         repo().load_verified_context(spec_id)
         return GenerationService(repo(), PySparkGenerator(LazyGenerationClient())).generate(
             spec_id, body.request_id
+        )
+
+    @app.post("/api/v1/specifications/{spec_id}/executions", status_code=202)
+    def queue_execution(spec_id: UUID, body: ExecutionRequest):
+        from execution.storage import ExecutionStore
+
+        run_id = ExecutionStore(repo()).enqueue(
+            spec_id, body.artifact_id, body.inputs, body.request_id, body.parameters
+        )
+        return ExecutionStore(repo()).get(spec_id, run_id)
+
+    @app.get("/api/v1/specifications/{spec_id}/executions")
+    def execution_history(spec_id: UUID):
+        from execution.storage import ExecutionStore
+
+        return ExecutionStore(repo()).list(spec_id)
+
+    @app.get("/api/v1/specifications/{spec_id}/executions/{run_id}")
+    def execution_status(spec_id: UUID, run_id: UUID):
+        from execution.storage import ExecutionStore
+
+        return ExecutionStore(repo()).get(spec_id, run_id)
+
+    @app.get("/api/v1/specifications/{spec_id}/executions/{run_id}/result")
+    def execution_result(spec_id: UUID, run_id: UUID):
+        from execution.storage import ExecutionStore
+
+        run = ExecutionStore(repo()).get(spec_id, run_id, include_archive=True)
+        if run["status"] != "SUCCEEDED" or run["result_archive"] is None:
+            raise PipelineError("EXECUTION_NOT_READY", "Результат выполнения ещё недоступен.")
+        return Response(
+            run["result_archive"],
+            media_type="application/zip",
+            headers={
+                "Content-Disposition": "attachment; filename=result.zip",
+                "X-Content-Type-Options": "nosniff",
+            },
+        )
+
+    @app.get("/api/v1/specifications/{spec_id}/executions/{run_id}/result.csv")
+    def execution_csv(spec_id: UUID, run_id: UUID):
+        from execution.storage import ExecutionStore
+
+        run = ExecutionStore(repo()).get(spec_id, run_id, include_archive=True)
+        if run["status"] != "SUCCEEDED" or run["result_csv"] is None:
+            raise PipelineError("EXECUTION_NOT_READY", "CSV-экспорт результата недоступен.")
+        return Response(
+            run["result_csv"],
+            media_type="text/csv; charset=utf-8",
+            headers={
+                "Content-Disposition": "attachment; filename=result.csv",
+                "X-Content-Type-Options": "nosniff",
+            },
         )
 
     @app.get("/api/v1/specifications/{spec_id}/artifacts/{artifact_id}")
