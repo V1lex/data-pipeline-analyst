@@ -41,11 +41,13 @@ def test_real_pipeline_and_checker_round_trip(repository):
     )
     run = repository.enqueue_verification(version)
     # Synthetic result object tests transport, not a real TLC execution.
+    token = repository.claim_verification()["lease_token"]
     repository.finish_verification(
         run,
         output.PropertyHolds(
             statistics=output.Statistics(states_generated=2, distinct_states=2, depth=1),
         ),
+        token,
     )
     with pytest.raises(PipelineError) as failure:
         repository.load_verified_context(version)
@@ -77,7 +79,9 @@ def test_real_checker_json_is_accepted_without_changing_verdict(repository):
             )
         ]
     )
-    repository.finish_verification(run, result.model_dump_json())
+    repository.finish_verification(
+        run, result.model_dump_json(), repository.claim_verification()["lease_token"]
+    )
     with pytest.raises(PipelineError) as failure:
         repository.load_verified_context(spec)
     assert failure.value.code == "VERIFICATION_REQUIRED"

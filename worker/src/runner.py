@@ -3,7 +3,7 @@
 import logging
 import os
 import signal
-from threading import Event
+from threading import Event, Thread
 
 from compiler.formal_check.src.services.checker import check_model
 from dotenv import load_dotenv
@@ -153,6 +153,18 @@ def process_one(repository, checker=check_model) -> bool:
             logger.info("Discarding verification %s: its project was deleted", run["id"])
             return True
         raise
+    stop_heartbeat = Event()
+
+    def heartbeat():
+        while not stop_heartbeat.wait(20):
+            try:
+                if not repository.heartbeat_verification(run["id"], run["lease_token"]):
+                    return
+            except Exception:
+                logger.exception("Verification heartbeat failed")
+
+    heartbeat_thread = Thread(target=heartbeat, daemon=True)
+    heartbeat_thread.start()
     try:
         stage_result = checker(specification["spec_json"])
         if isinstance(stage_result, dict) and {
@@ -171,12 +183,15 @@ def process_one(repository, checker=check_model) -> bool:
             "engine": "TLC",
             "error": f"Verification worker failed: {type(exc).__name__}: {exc}",
         }
+    finally:
+        stop_heartbeat.set()
+        heartbeat_thread.join()
     try:
-        repository.finish_verification(run["id"], result)
+        repository.finish_verification(run["id"], result, run["lease_token"])
     except PipelineError as exc:
-        if exc.code != "NOT_FOUND":
+        if exc.code not in {"NOT_FOUND", "LEASE_CONFLICT"}:
             raise
-        logger.info("Discarding verification %s: its project was deleted", run["id"])
+        logger.info("Discarding verification %s: deleted or lease expired", run["id"])
     return True
 
 

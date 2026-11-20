@@ -198,15 +198,36 @@ class PostgresRepository:
             )
         return run
 
-    def claim_verification(self) -> dict | None:
+    def claim_verification(self, lease_seconds: int = 90) -> dict | None:
+        if lease_seconds < 1:
+            raise ValueError("lease_seconds must be positive")
+        token = uuid4()
         with self.connect() as connection:
-            return connection.execute("""WITH next AS (
-                SELECT id FROM verification_runs WHERE status='QUEUED'
+            return connection.execute(
+                """WITH next AS (
+                SELECT id FROM verification_runs
+                WHERE status='QUEUED' OR (status='RUNNING' AND lease_until <= clock_timestamp())
                 ORDER BY queued_at,id FOR UPDATE SKIP LOCKED LIMIT 1
-            ) UPDATE verification_runs r SET status='RUNNING' FROM next
-              WHERE r.id=next.id RETURNING r.*""").fetchone()
+            ) UPDATE verification_runs r SET status='RUNNING', lease_token=%s,
+                lease_until=clock_timestamp()+(%s * interval '1 second'), heartbeat_at=clock_timestamp()
+              FROM next WHERE r.id=next.id RETURNING r.*""",
+                (token, lease_seconds),
+            ).fetchone()
 
-    def finish_verification(self, run_id: UUID, result: dict[str, Any] | BaseModel | str) -> None:
+    def heartbeat_verification(self, run_id: UUID, token: UUID, lease_seconds: int = 90) -> bool:
+        with self.connect() as connection:
+            row = connection.execute(
+                """UPDATE verification_runs SET heartbeat_at=clock_timestamp(),
+                lease_until=clock_timestamp()+(%s * interval '1 second')
+                WHERE id=%s AND status='RUNNING' AND lease_token=%s
+                  AND lease_until>clock_timestamp() RETURNING id""",
+                (lease_seconds, run_id, token),
+            ).fetchone()
+            return row is not None
+
+    def finish_verification(
+        self, run_id: UUID, result: dict[str, Any] | BaseModel | str, token: UUID
+    ) -> None:
         """Worker-only API: caller must supply the actual normalized checker response."""
         result = json_object(result, code="INVALID_VERIFICATION_RESULT")
         if result.get("status") not in CHECK_STATUSES:
@@ -217,10 +238,14 @@ class PostgresRepository:
                     "SELECT * FROM verification_runs WHERE id=%s FOR UPDATE", (run_id,)
                 ).fetchone()
             )
-            if run["status"] == "FINISHED":
-                raise PipelineError(
-                    "REQUEST_CONFLICT", "Завершённый результат нельзя перезаписать."
-                )
+            if run["status"] != "RUNNING" or run["lease_token"] != token:
+                raise PipelineError("LEASE_CONFLICT", "Попытка проверки устарела.")
+            valid = connection.execute(
+                "SELECT lease_until > clock_timestamp() AS valid FROM verification_runs WHERE id=%s",
+                (run_id,),
+            ).fetchone()
+            if not valid["valid"]:
+                raise PipelineError("LEASE_CONFLICT", "Срок попытки проверки истёк.")
             if result["status"] == "PROPERTY_VIOLATED":
                 spec = connection.execute(
                     "SELECT spec_json FROM specifications WHERE id=%s", (run["spec_id"],)
@@ -247,7 +272,7 @@ class PostgresRepository:
                     ),
                 )
             connection.execute(
-                "UPDATE verification_runs SET status='FINISHED',finished_at=clock_timestamp(),result_json=%s WHERE id=%s",
+                "UPDATE verification_runs SET status='FINISHED',finished_at=clock_timestamp(),result_json=%s,lease_token=NULL,lease_until=NULL,heartbeat_at=NULL WHERE id=%s",
                 (Jsonb(result), run_id),
             )
 

@@ -108,3 +108,24 @@ def test_status_upgrade_preserves_legacy_verdict_and_immutability(empty_schema):
         assert result == {"status": "INFRASTRUCTURE_ERROR", "engine": "TLC", "error": "legacy"}
         with pytest.raises(psycopg.Error, match="immutable"):
             con.execute("UPDATE verification_runs SET result_json='{}' WHERE id=%s", (run_id,))
+
+
+def test_upgrade_recovers_preexisting_running_verification(empty_schema):
+    from db.migrations import upgrade
+
+    upgrade(empty_schema.dsn, schema=empty_schema.schema, revision="20261120_check_status")
+    project = empty_schema.create_project("Previous deployment")
+    spec_id, run_id = uuid4(), uuid4()
+    with empty_schema.connect() as con:
+        con.execute(
+            "INSERT INTO specifications (id,project_id,version,spec_json,status) VALUES (%s,%s,1,'{}','APPROVED')",
+            (spec_id, project),
+        )
+        con.execute(
+            "INSERT INTO verification_runs (id,spec_id,status) VALUES (%s,%s,'RUNNING')",
+            (run_id, spec_id),
+        )
+    upgrade(empty_schema.dsn, schema=empty_schema.schema)
+    reclaimed = empty_schema.claim_verification()
+    assert reclaimed["id"] == run_id
+    assert reclaimed["lease_token"] is not None

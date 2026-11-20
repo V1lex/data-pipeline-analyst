@@ -5,7 +5,7 @@ import pytest
 
 class Repository:
     def __init__(self, run=True):
-        self.run = {"id": uuid4(), "spec_id": uuid4()} if run else None
+        self.run = {"id": uuid4(), "spec_id": uuid4(), "lease_token": uuid4()} if run else None
         self.saved = []
 
     def claim_verification(self):
@@ -15,7 +15,8 @@ class Repository:
         assert spec_id == self.run["spec_id"]
         return {"spec_json": {"variables": []}}
 
-    def finish_verification(self, run_id, result):
+    def finish_verification(self, run_id, result, token):
+        assert token == self.run["lease_token"]
         self.saved.append((run_id, result))
 
 
