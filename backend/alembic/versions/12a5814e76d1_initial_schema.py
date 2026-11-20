@@ -96,11 +96,10 @@ def upgrade() -> None:
             sa.Enum(
                 "PROPERTY_HOLDS",
                 "PROPERTY_VIOLATED",
-                "PROPERTY_UNREACHABLE",
                 "MODEL_INVALID",
                 "TIMEOUT",
                 "STATE_LIMIT_REACHED",
-                "INFRASTRUCTURE_ERROR",
+                "ENGINE_ERROR",
                 name="check_status",
             ),
             nullable=False,

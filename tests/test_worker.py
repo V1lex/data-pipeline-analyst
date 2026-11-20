@@ -219,3 +219,21 @@ def test_worker_persists_real_tlc_outcomes(repository):
     assert completed[0]["result_json"]["status"] == "PROPERTY_HOLDS", completed
     assert completed[0]["result_json"]["checked_properties"] == ["Ready"]
     assert not process_one(repository)
+
+
+@pytest.mark.parametrize(
+    "runner, parsed",
+    [
+        (
+            {"status": "invalid_timeout", "error": "TLC timeout must be a positive finite number"},
+            [],
+        ),
+        ({"outputs": []}, []),
+        ({"outputs": [{"status": "success"}]}, []),
+    ],
+)
+def test_worker_does_not_report_success_without_verification_results(runner, parsed):
+    from worker.src.runner import aggregate_verification
+
+    result = aggregate_verification({"validation": {}, "runner": runner, "parsed": parsed})
+    assert result["status"] == "INFRASTRUCTURE_ERROR"

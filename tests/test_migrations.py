@@ -82,3 +82,29 @@ def test_unversioned_populated_schema_is_refused_without_data_loss(empty_schema)
             con.execute("SELECT to_regclass('alembic_version') as version").fetchone()["version"]
             is None
         )
+
+
+def test_status_upgrade_preserves_legacy_verdict_and_immutability(empty_schema):
+    from db.migrations import upgrade
+
+    upgrade(empty_schema.dsn, schema=empty_schema.schema, revision="20261101_mvp")
+    project = empty_schema.create_project("Legacy")
+    spec_id, run_id = uuid4(), uuid4()
+    with empty_schema.connect() as con:
+        con.execute(
+            "INSERT INTO specifications (id, project_id, version, spec_json, status) VALUES (%s,%s,1,'{}','APPROVED')",
+            (spec_id, project),
+        )
+        con.execute(
+            "INSERT INTO verification_runs (id, spec_id, status, finished_at, result_json) VALUES (%s,%s,'FINISHED',now(),%s::jsonb)",
+            (run_id, spec_id, '{"status":"ENGINE_ERROR","engine":"TLC","error":"legacy"}'),
+        )
+    upgrade(empty_schema.dsn, schema=empty_schema.schema)
+    upgrade(empty_schema.dsn, schema=empty_schema.schema)
+    with empty_schema.connect() as con:
+        result = con.execute(
+            "SELECT result_json FROM verification_runs WHERE id=%s", (run_id,)
+        ).fetchone()["result_json"]
+        assert result == {"status": "INFRASTRUCTURE_ERROR", "engine": "TLC", "error": "legacy"}
+        with pytest.raises(psycopg.Error, match="immutable"):
+            con.execute("UPDATE verification_runs SET result_json='{}' WHERE id=%s", (run_id,))

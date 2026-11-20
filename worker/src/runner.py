@@ -24,7 +24,13 @@ def aggregate_verification(stage_result: dict) -> dict:
         }
 
     runner = stage_result.get("runner") or {}
-    outputs = runner.get("outputs", [])
+    outputs = runner.get("outputs") or []
+    if runner.get("status") or not outputs:
+        return {
+            "status": "INFRASTRUCTURE_ERROR",
+            "engine": "TLC",
+            "error": runner.get("error") or "TLC produced no execution results",
+        }
     for output in outputs:
         status = output.get("status")
         if status == "timeout":
@@ -48,8 +54,15 @@ def aggregate_verification(stage_result: dict) -> dict:
             }
 
     parsed = stage_result.get("parsed") or []
+    if not parsed or len(parsed) != len(outputs):
+        return {
+            "status": "INFRASTRUCTURE_ERROR",
+            "engine": "TLC",
+            "error": "TLC produced incomplete parsed results",
+        }
     checked_properties = []
     statistics = None
+    safety_passed = False
 
     for item in parsed:
         status = item.get("status")
@@ -102,6 +115,7 @@ def aggregate_verification(stage_result: dict) -> dict:
                 }
             return result
         if item.get("configuration") == "safety.cfg" and status == "PROPERTY_HOLDS":
+            safety_passed = True
             statistics = item.get("statistics")
         elif item.get("configuration", "").endswith(".cfg") and status == "PROPERTY_HOLDS":
             property_id = item.get("property_id")
@@ -112,6 +126,12 @@ def aggregate_verification(stage_result: dict) -> dict:
             if property_id:
                 checked_properties.append(property_id)
 
+    if not safety_passed:
+        return {
+            "status": "INFRASTRUCTURE_ERROR",
+            "engine": "TLC",
+            "error": "TLC safety result is missing",
+        }
     if statistics is None:
         statistics = {}
     return {
