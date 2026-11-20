@@ -64,6 +64,9 @@ class ProjectModel(Base):
         JSONB, nullable=False, server_default=text("'{}'::jsonb")
     )
     state_revision: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    selected_source_ids: Mapped[list] = mapped_column(
+        JSONB, nullable=False, server_default=text("'[]'::jsonb")
+    )
     lease_token: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
     lease_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(

@@ -79,7 +79,7 @@ export default function App() {
       <VersionPicker state={state} onSelect={id => void store.selectSpecification(id)}/>
       {drawer === 'schema' && <SchemaPanel key={state.specId || 'draft'} {...inspectorProps}/>}
       {drawer === 'verification' && <VerificationPanel {...inspectorProps}/>}
-      {drawer === 'files' && <FilesPanel key={state.specId || 'draft'} {...inspectorProps}/>}
+      {drawer === 'files' && <FilesPanel key={state.specId || 'draft'} {...inspectorProps} onSourcesChanged={id => store.refreshProjectSnapshot(id)}/>}
     </ContextDrawer>
   </div>;
 }

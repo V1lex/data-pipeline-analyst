@@ -351,3 +351,18 @@ def test_upload_invalid_content_returns_safe_error(app_client, repository):
     assert response.status_code == 422
     assert response.json()["error"]["code"] == "FILE_INVALID"
     assert repository.list_source_files(project) == []
+
+
+def test_select_source_files_via_api(app_client, repository):
+    project = repository.create_project("Selected")
+    source = repository.store_source_file(
+        project, "a.csv", b"a,b\n1,2\n", {"format": "csv"}, max_files=3
+    )
+    response = app_client.put(
+        f"/api/v1/projects/{project}/sources/selection", json={"file_ids": [str(source)]}
+    )
+    assert response.status_code == 200, response.text
+    assert response.json()[0]["id"] == str(source)
+    assert app_client.get(f"/api/v1/projects/{project}/sources/selection").json()[0]["id"] == str(
+        source
+    )

@@ -138,6 +138,64 @@ class PostgresRepository:
                 ).fetchone()
             )
 
+    def selected_source_files(self, project_id: UUID) -> list[dict]:
+        with self.connect() as connection:
+            project = _found(
+                connection.execute(
+                    "SELECT selected_source_ids FROM projects WHERE id=%s", (project_id,)
+                ).fetchone()
+            )
+            ids = project["selected_source_ids"]
+            if not ids:
+                return []
+            return connection.execute(
+                """SELECT f.id,f.project_id,f.filename,f.format,f.size_bytes,f.checksum,f.profile,f.status,f.created_at
+                FROM unnest(%s::uuid[]) WITH ORDINALITY AS selected(id,position)
+                JOIN source_files f ON f.id=selected.id AND f.project_id=%s ORDER BY selected.position""",
+                (ids, project_id),
+            ).fetchall()
+
+    def select_source_files(self, project_id: UUID, file_ids: list[UUID]) -> None:
+        if len(file_ids) != len(set(file_ids)):
+            raise PipelineError("FILE_INVALID", "Один файл выбран несколько раз.")
+        with self.connect() as connection:
+            project = _found(
+                connection.execute(
+                    "SELECT selected_source_ids,analyst_state,lease_token,lease_until FROM projects WHERE id=%s FOR UPDATE",
+                    (project_id,),
+                ).fetchone()
+            )
+            busy = connection.execute(
+                "SELECT lease_token IS NOT NULL AND lease_until > clock_timestamp() AS busy FROM projects WHERE id=%s",
+                (project_id,),
+            ).fetchone()["busy"]
+            if busy:
+                raise PipelineError(
+                    "DIALOGUE_BUSY", "Дождитесь завершения запроса аналитика.", retryable=True
+                )
+            rows = connection.execute(
+                "SELECT id FROM source_files WHERE project_id=%s AND id=ANY(%s::uuid[])",
+                (project_id, [str(i) for i in file_ids]),
+            ).fetchall()
+            if len(rows) != len(file_ids):
+                raise PipelineError("NOT_FOUND", "Источник не найден в этом проекте.")
+            ids = [str(i) for i in file_ids]
+            if ids == project["selected_source_ids"]:
+                return
+            snapshot = dict(project["analyst_state"] or {})
+            snapshot.update(
+                {
+                    "last_response": None,
+                    "current_draft": {},
+                    "parameters_metadata": [],
+                    "state": "insufficient_data",
+                }
+            )
+            connection.execute(
+                "UPDATE projects SET selected_source_ids=%s,analyst_state=%s,state_revision=state_revision+1 WHERE id=%s",
+                (Jsonb(ids), Jsonb(snapshot), project_id),
+            )
+
     def add_message(self, project_id: UUID, role: str, content: str) -> UUID:
         role = "assistant" if role == "model" else role
         if role not in {"user", "assistant", "system"} or not content.strip():
@@ -175,9 +233,10 @@ class PostgresRepository:
         spec = uuid4()
         with self.connect() as connection:
             # Serializes version allocation only, not an external operation.
-            _found(
+            project_row = _found(
                 connection.execute(
-                    "SELECT id FROM projects WHERE id=%s FOR UPDATE", (project_id,)
+                    "SELECT id,selected_source_ids FROM projects WHERE id=%s FOR UPDATE",
+                    (project_id,),
                 ).fetchone()
             )
             if dialogue_token is not None:
@@ -205,6 +264,16 @@ class PostgresRepository:
             }
             if pipeline_specification is not None:
                 snapshot["pipeline_specification"] = pipeline_specification
+            if project_row["selected_source_ids"]:
+                files = connection.execute(
+                    """SELECT f.id,f.filename,f.format,f.size_bytes,f.checksum,f.profile
+                    FROM unnest(%s::uuid[]) WITH ORDINALITY AS selected(id,position)
+                    JOIN source_files f ON f.id=selected.id AND f.project_id=%s ORDER BY selected.position""",
+                    (project_row["selected_source_ids"], project_id),
+                ).fetchall()
+                if len(files) != len(project_row["selected_source_ids"]):
+                    raise PipelineError("CONTEXT_REQUIRED", "Выбранный источник больше недоступен.")
+                snapshot["source_files"] = [{**row, "id": str(row["id"])} for row in files]
             version = connection.execute(
                 "SELECT COALESCE(MAX(version),0)+1 AS version FROM specifications WHERE project_id=%s",
                 (project_id,),

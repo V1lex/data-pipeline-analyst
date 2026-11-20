@@ -20,7 +20,13 @@ from pipeline_generator.generator import PySparkGenerator
 from pipeline_generator.service import GenerationService
 from pipeline_generator.storage import PostgresRepository
 
-from api.schemas import GenerationRequest, MessageRequest, ProjectRenameRequest, ProjectRequest
+from api.schemas import (
+    GenerationRequest,
+    MessageRequest,
+    ProjectRenameRequest,
+    ProjectRequest,
+    SourceSelectionRequest,
+)
 
 logger = logging.getLogger(__name__)
 ROOT = Path(__file__).resolve().parents[3]
@@ -154,6 +160,15 @@ def create_app(*, repository=None, analyst_client=None, builder=None, generation
     @app.get("/api/v1/projects/{project_id}/sources")
     def list_sources(project_id: UUID):
         return repo().list_source_files(project_id)
+
+    @app.get("/api/v1/projects/{project_id}/sources/selection")
+    def selected_sources(project_id: UUID):
+        return repo().selected_source_files(project_id)
+
+    @app.put("/api/v1/projects/{project_id}/sources/selection")
+    def select_sources(project_id: UUID, body: SourceSelectionRequest):
+        repo().select_source_files(project_id, body.file_ids)
+        return repo().selected_source_files(project_id)
 
     @app.get("/api/v1/projects/{project_id}/sources/{file_id}")
     def source_profile(project_id: UUID, file_id: UUID):

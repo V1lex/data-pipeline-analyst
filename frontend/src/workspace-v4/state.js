@@ -75,6 +75,10 @@ export class WorkspaceController {
     }
   }
   newConversation() { if (!this.state.busy) void this.selectProject(null); }
+  async refreshProjectSnapshot(id) {
+    const project = await this.api(`/projects/${id}`);
+    if (this.state.projectId === id) this._set({ project });
+  }
   async renameProject(id, name) {
     name = name.trim();
     if (!name || name.length > 200) {

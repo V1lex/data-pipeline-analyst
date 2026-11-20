@@ -1,7 +1,7 @@
 from typing import Annotated
 from uuid import UUID
 
-from pydantic import BaseModel, StringConstraints
+from pydantic import BaseModel, Field, StringConstraints
 
 Text = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)]
 
@@ -23,3 +23,7 @@ class MessageRequest(BaseModel):
 
 class GenerationRequest(BaseModel):
     request_id: UUID
+
+
+class SourceSelectionRequest(BaseModel):
+    file_ids: list[UUID] = Field(max_length=100)

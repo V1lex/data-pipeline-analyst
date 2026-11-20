@@ -74,7 +74,7 @@ export function VerificationPanel({ state, view, onVerify, onGenerate }) {
   </div>;
 }
 
-export function FilesPanel({ state, view, onOpenSchema, onOpenVerification, onGenerate }) {
+export function FilesPanel({ state, view, onOpenSchema, onOpenVerification, onGenerate, onSourcesChanged }) {
   const [preview, setPreview] = useState(null);
   const [content, setContent] = useState('');
   const [error, setError] = useState('');
@@ -83,15 +83,20 @@ export function FilesPanel({ state, view, onOpenSchema, onOpenVerification, onGe
   const [sourceError, setSourceError] = useState('');
   const [uploading, setUploading] = useState(false);
   const [sourcePreview, setSourcePreview] = useState(null);
+  const [selectedSources, setSelectedSources] = useState([]);
+  const [selecting, setSelecting] = useState(false);
   const [sourceEncoding, setSourceEncoding] = useState('utf-8-sig');
   const [sourceDelimiter, setSourceDelimiter] = useState('');
   const activeProject = useRef(state.projectId);
   activeProject.current = state.projectId;
   useEffect(() => {
     let alive = true;
-    setSources([]); setSourcePreview(null); setSourceError(''); setUploading(false);
+    setSources([]); setSelectedSources([]); setSourcePreview(null); setSourceError(''); setUploading(false); setSelecting(false);
     if (state.projectId) request(`/projects/${state.projectId}/sources`)
       .then(data => { if (alive) setSources(data); })
+      .catch(error => { if (alive) setSourceError(error.message); });
+    if (state.projectId) request(`/projects/${state.projectId}/sources/selection`)
+      .then(data => { if (alive) setSelectedSources(data.map(file => file.id)); })
       .catch(error => { if (alive) setSourceError(error.message); });
     return () => { alive = false; };
   }, [state.projectId]);
@@ -116,6 +121,20 @@ export function FilesPanel({ state, view, onOpenSchema, onOpenVerification, onGe
       }
     } finally { if (activeProject.current === projectId) setUploading(false); }
   }
+  async function selectSource(id, checked) {
+    const projectId = state.projectId;
+    const previous = selectedSources;
+    const ids = checked ? [...previous, id] : previous.filter(item => item !== id);
+    setSelectedSources(ids); setSelecting(true); setSourceError('');
+    try {
+      const selected = await request(`/projects/${projectId}/sources/selection`, { method: 'PUT', body: { file_ids: ids } });
+      if (activeProject.current === projectId) {
+        setSelectedSources(selected.map(file => file.id));
+        try { await onSourcesChanged?.(projectId); } catch { setSourceError('Выбор сохранён, но не удалось обновить диалог.'); }
+      }
+    } catch (error) { if (activeProject.current === projectId) { setSelectedSources(previous); setSourceError(error.message); } }
+    finally { if (activeProject.current === projectId) setSelecting(false); }
+  }
   const specId = state.spec?.id;
   const generated = state.generated?.spec_id === specId ? state.generated : null;
   const artifacts = new Map((state.spec?.artifacts || []).filter(file => file.spec_id === specId).map(file => [file.id,file]));
@@ -138,7 +157,7 @@ export function FilesPanel({ state, view, onOpenSchema, onOpenVerification, onGe
     {state.projectId ? <label className="pa-button">{uploading ? 'Загружаем…' : 'Загрузить файлы'}<input type="file" accept=".csv,.json,.jsonl,.parquet" multiple disabled={uploading} onChange={uploadSources} style={{position:'absolute',width:1,height:1,opacity:0}} /></label> : <p className="pa-files-empty">Начните диалог, чтобы загрузить файлы.</p>}
     {state.projectId && <details><summary>Параметры чтения</summary><label>Кодировка <select value={sourceEncoding} onChange={event => setSourceEncoding(event.target.value)}><option value="utf-8-sig">UTF-8</option><option value="cp1251">Windows-1251</option></select></label><label> Разделитель CSV <select value={sourceDelimiter} onChange={event => setSourceDelimiter(event.target.value)}><option value="">Определить автоматически</option><option value=",">Запятая</option><option value=";">Точка с запятой</option><option value={'\t'}>Табуляция</option><option value="|">Вертикальная черта</option></select></label></details>}
     {sourceError && <p role="alert" className="pa-inspector-error">{sourceError}</p>}
-    {sources.map(source => <button type="button" className="pa-file-row" key={source.id} onClick={() => setSourcePreview(source)}><Icon name="file" size={24}/><span>{source.filename}</span><small>Профиль</small></button>)}
+    {sources.map(source => <div className="pa-file-row" key={source.id}><label><input type="checkbox" checked={selectedSources.includes(source.id)} disabled={selecting || Boolean(state.busy)} onChange={event => selectSource(source.id, event.target.checked)}/><span> Использовать {source.filename}</span></label><button type="button" className="pa-text-button" onClick={() => setSourcePreview(source)}>Профиль</button></div>)}
     <h3>Артефакты</h3>
     {(state.spec || view.pipeline) && <button className="pa-file-row" type="button" onClick={onOpenSchema}><Icon name="file" size={24}/><span>Спецификация</span><small>Открыть</small></button>}
     {[...artifacts.values()].map(file => <div className="pa-file-row" key={file.id}><Icon name="code" size={24}/><button className="pa-file-name" onClick={() => setPreview(file)}>{file.filename}</button><a className="pa-file-download" href={artifactUrl(file.spec_id,file.id)} aria-label={`Скачать ${file.filename}`} title="Скачать"><Icon name="download" size={20}/></a></div>)}

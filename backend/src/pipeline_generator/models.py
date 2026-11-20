@@ -32,12 +32,15 @@ class VerifiedContext(BaseModel):
     verification_result: dict[str, Any]
     target_environment: dict[str, Any]
     pipeline_specification: dict[str, Any] | None = None
+    source_files: list[dict[str, Any]] | None = None
 
     def fingerprint(self) -> str:
         data = self.model_dump(mode="json")
         # Preserve request hashes saved before the optional upstream specification existed.
         if self.pipeline_specification is None:
             data.pop("pipeline_specification")
+        if self.source_files is None:
+            data.pop("source_files")
         serialized = json.dumps(
             data,
             sort_keys=True,
