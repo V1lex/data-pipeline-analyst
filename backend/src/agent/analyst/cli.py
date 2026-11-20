@@ -16,7 +16,7 @@ def main() -> None:
     except Exception as e:
         print(f"\n[Ошибка инициализации сессии: {e}]")
         print(
-            "Подсказка: задайте GEMINI_API_KEY в .env или запустите с USE_MOCK_CLIENT=true для автономного режима."
+            "Подсказка: задайте POLZA_API_KEY в .env или запустите с USE_MOCK_CLIENT=true для автономного режима."
         )
         return
 

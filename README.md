@@ -1,6 +1,6 @@
 # Data Pipeline Analyst
 
-Локальный MVP: диалог с Gemini → согласованная версия спецификации → формальная проверка TLA+/TLC → генерация и скачивание PySpark.
+Локальный MVP: диалог с DeepSeek через Polza AI → согласованная версия спецификации → формальная проверка TLA+/TLC → генерация и скачивание PySpark.
 
 Ветки команды объединены с сохранением истории. Рабочая интеграция предназначена для `dev`; `main` остаётся стабильной базой.
 
@@ -36,7 +36,7 @@ python3 scripts/download_tlc.py
 docker compose --env-file .env -f infra/docker-compose.yml up --build
 ```
 
-В `.env` укажите `GEMINI_API_KEY` и доступную вам `GEMINI_MODEL`. Compose использует `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB` для внутреннего подключения; `DATABASE_URL` нужен при локальном запуске. Backend применяет Alembic, проходит healthcheck, затем запускается worker. Данные PostgreSQL остаются в именованном volume.
+В `.env` укажите `POLZA_API_KEY`; `POLZA_MODEL` по умолчанию — `deepseek/deepseek-v4.1-flash-1017`. Compose использует `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB` для внутреннего подключения; `DATABASE_URL` нужен при локальном запуске. Backend применяет Alembic, проходит healthcheck, затем запускается worker. Данные PostgreSQL остаются в именованном volume.
 
 - Интерфейс: <http://localhost:3000>
 - OpenAPI: <http://localhost:8000/docs>
@@ -78,7 +78,7 @@ Vite открывается на <http://127.0.0.1:5173> и проксирует
 
 Профиль пока один: статичный `user`, без аккаунтов и входа. Авторизация остаётся отдельной задачей. Дизайн и подтверждение пользователя: `frontend/src/workspace-v4/landing.json`; принятый макет — `layout/full-page-v2.png`.
 
-Для автоматического браузерного сценария без обращения к Gemini нужны отдельная тестовая PostgreSQL, Java/TLC и dev-зависимости. В трёх терминалах:
+Для автоматического браузерного сценария без обращения к модели нужны отдельная тестовая PostgreSQL, Java/TLC и dev-зависимости. В трёх терминалах:
 
 ```sh
 PYTHONPATH=. TEST_DATABASE_URL='postgresql://user:password@localhost/test_database' uv run python tests/browser_preview.py
@@ -86,7 +86,7 @@ DPA_API_TARGET=http://127.0.0.1:8001 npm run dev --prefix frontend -- --port 517
 FRONTEND_E2E_URL=http://127.0.0.1:5174 PLAYWRIGHT_CHANNEL=chrome npm run test:e2e --prefix frontend
 ```
 
-QA API работает только на localhost, использует изолированную случайную схему с удалением при штатной остановке и подставленные ответы модели. PostgreSQL, очередь, API и Java/TLC настоящие. Это не проверка доступности Gemini или качества сгенерированного им PySpark. `PLAYWRIGHT_CHANNEL=chrome` использует установленный Chrome; без него установите Chromium через `npx playwright install chromium` из frontend. Обычная сборка приложения никогда не включает этот QA API.
+QA API работает только на localhost, использует изолированную случайную схему с удалением при штатной остановке и подставленные ответы модели. PostgreSQL, очередь, API и Java/TLC настоящие. Это не проверка доступности Polza AI или качества сгенерированного моделью PySpark. `PLAYWRIGHT_CHANNEL=chrome` использует установленный Chrome; без него установите Chromium через `npx playwright install chromium` из frontend. Обычная сборка приложения никогда не включает этот QA API.
 
 ## Сценарий
 
@@ -120,6 +120,6 @@ TEST_DATABASE_URL='postgresql://user:password@localhost/test_database' uv run py
 
 ## Границы текущего MVP
 
-Сервис рассчитан на доверенную локальную разработку. Пользовательская авторизация и изоляция проектов ещё не реализованы. Жёсткое завершение worker может оставить задание `RUNNING`; автоматическое восстановление с lease/heartbeat — работа следующего спринта. Для повторной проверки можно создать новый запуск через API/UI. Нагрузочные ограничения и выполнение именно полученного от Gemini PySpark также остаются отдельными задачами.
+Сервис рассчитан на доверенную локальную разработку. Пользовательская авторизация и изоляция проектов ещё не реализованы. Жёсткое завершение worker может оставить задание `RUNNING`; автоматическое восстановление с lease/heartbeat — работа следующего спринта. Для повторной проверки можно создать новый запуск через API/UI. Нагрузочные ограничения и выполнение именно полученного от модели PySpark также остаются отдельными задачами.
 
 Единственный владелец схемы — Alembic. Миграция сохраняет данные первой версии Вани, но не выдумывает отсутствующие контексты и результаты старых проверок. Неверсионированная БД старого генератора отклоняется до DDL; её данные нужно переносить явно после резервного копирования. См. [интеграционный контракт](docs/integration.md), [ревью веток](docs/review-integration.md) и [подробности формального движка](docs/review-formal.md).

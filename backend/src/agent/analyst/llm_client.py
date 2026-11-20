@@ -6,6 +6,7 @@ from abc import ABC, abstractmethod
 
 from google import genai
 from google.genai import types
+from pipeline_generator.errors import PipelineError
 from tenacity import retry, retry_if_exception, stop_after_attempt, wait_exponential
 
 from agent.analyst.config import (
@@ -51,6 +52,9 @@ def _is_transient_error(exception: BaseException) -> bool:
         exception, (ValueError, TypeError, LLMTruncatedResponseError, LLMBlockedResponseError)
     ):
         return False
+
+    if isinstance(exception, PipelineError):
+        return exception.retryable
 
     code = getattr(exception, "code", None) or getattr(exception, "status_code", None)
     if code in (400, 401, 403, 404):

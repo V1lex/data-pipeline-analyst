@@ -22,9 +22,9 @@ services:
     environment:
       DATABASE_URL: postgresql://${POSTGRES_USER:-pipeline}:${POSTGRES_PASSWORD:-change-me}@postgres:5432/${POSTGRES_DB:-pipeline}
       DATABASE_SCHEMA: public
-      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
-      GEMINI_MODEL: ${GEMINI_MODEL:-gemini-3.5-flash-lite}
-      GEMINI_TIMEOUT: ${GEMINI_TIMEOUT:-60}
+      POLZA_API_KEY: ${POLZA_API_KEY:-}
+      POLZA_MODEL: ${POLZA_MODEL:-deepseek/deepseek-v4.1-flash-1017}
+      POLZA_TIMEOUT: ${POLZA_TIMEOUT:-60}
     ports:
       - "127.0.0.1:8000:8000"
     command: ["sh", "-c", "python -m db.migrations && uvicorn api.app:app --host 0.0.0.0 --port 8000"]

@@ -203,6 +203,9 @@ class SpecificationBuilder:
     def _call_llm_json(self, prompt: str) -> str:
         assert self.client is not None
 
+        if hasattr(self.client, "generate_json"):
+            return self.client.generate_json(BUILDER_SYSTEM_INSTRUCTION, prompt)
+
         # Compatible Gemini Developer API configuration without invalid response_schema (A01)
         config = types.GenerateContentConfig(
             system_instruction=BUILDER_SYSTEM_INSTRUCTION,

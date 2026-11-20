@@ -173,7 +173,7 @@ def test_concurrent_first_requests_share_one_provider(repository, monkeypatch):
     import time
     from concurrent.futures import ThreadPoolExecutor
 
-    import agent.analyst.llm_client as module
+    import agent.analyst.polza as module
     from agent.analyst.specification_builder import MockSpecificationBuilder
     from api.app import create_app
 
@@ -192,7 +192,10 @@ def test_concurrent_first_requests_share_one_provider(repository, monkeypatch):
             super().__init__(spec)
             self.client = SDK()
 
-    monkeypatch.setattr(module, "GeminiLLMClient", Provider)
+        def close(self):
+            self.client.close()
+
+    monkeypatch.setattr(module, "PolzaLLMClient", Provider)
     app = create_app(repository=repository, builder=builder, generation_client=CodeModel())
     with TestClient(app) as client:
         projects = [

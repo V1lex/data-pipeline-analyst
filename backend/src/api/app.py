@@ -38,22 +38,19 @@ def create_app(*, repository=None, analyst_client=None, builder=None, generation
 
     @lru_cache(maxsize=1)
     def cached_providers():
-        from agent.analyst.llm_client import GeminiLLMClient
+        from agent.analyst.polza import PolzaLLMClient
         from agent.analyst.specification_builder import SpecificationBuilder
-        from pipeline_generator.shared_gemini import SharedGeminiClient
 
         try:
-            client = analyst_client or GeminiLLMClient(
-                model_name=os.getenv("GEMINI_MODEL", "gemini-3.5-flash-lite")
-            )
+            client = analyst_client or PolzaLLMClient()
             spec_builder = builder or SpecificationBuilder(
-                client=client.client, model_name=client.model_name
+                client=client, model_name=client.model_name
             )
-            generator = generation_client or SharedGeminiClient.from_analyst_client(client)
+            generator = generation_client or client
             return client, spec_builder, generator
         except ValueError:
             raise PipelineError(
-                "CONFIGURATION_ERROR", "Настройте GEMINI_API_KEY и GEMINI_MODEL."
+                "CONFIGURATION_ERROR", "Настройте POLZA_API_KEY и POLZA_MODEL."
             ) from None
 
     def providers():
@@ -68,7 +65,7 @@ def create_app(*, repository=None, analyst_client=None, builder=None, generation
     async def lifespan(app):
         yield
         if cached_providers.cache_info().currsize and analyst_client is None:
-            providers()[0].client.close()
+            providers()[0].close()
 
     app = FastAPI(title="Data Pipeline Analyst", version="0.2.0", lifespan=lifespan)
 

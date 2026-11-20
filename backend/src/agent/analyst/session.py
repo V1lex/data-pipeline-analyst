@@ -16,7 +16,7 @@ from agent.analyst.completeness import (
     SessionState,
 )
 from agent.analyst.config import USE_MOCK_CLIENT
-from agent.analyst.llm_client import BaseLLMClient, GeminiLLMClient, MockLLMClient
+from agent.analyst.llm_client import BaseLLMClient, MockLLMClient
 from agent.analyst.models import (
     AnalystResponse,
     ChatMessage,
@@ -24,6 +24,7 @@ from agent.analyst.models import (
     QuestionCategory,
     Role,
 )
+from agent.analyst.polza import PolzaLLMClient
 from agent.analyst.prompts import ANALYST_SYSTEM_INSTRUCTION
 
 logger = logging.getLogger(__name__)
@@ -51,7 +52,7 @@ class AnalystSession:
             self.llm_client = MockLLMClient()
         else:
             # Explicit initialization: do not silently mask errors with MockLLMClient (A09)
-            self.llm_client = GeminiLLMClient()
+            self.llm_client = PolzaLLMClient()
 
         self.system_instruction = system_instruction
         self.checker = checker or CompletenessChecker()

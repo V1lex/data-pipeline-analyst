@@ -739,8 +739,8 @@ def test_SCOPE_NEGATION_not_blocked_when_unsupported_term_negated():
 
 def test_PROVIDER_FAILURE_no_silent_fallback_to_mock():
     """PROVIDER_FAILURE: Missing API key or configuration failure raises error instead of silently using Mock."""
-    with patch.dict("os.environ", {"GEMINI_API_KEY": "", "USE_MOCK_CLIENT": "false"}):
-        with pytest.raises(ValueError, match="GEMINI_API_KEY is not provided"):
+    with patch.dict("os.environ", {"POLZA_API_KEY": "", "USE_MOCK_CLIENT": "false"}):
+        with pytest.raises(ValueError, match="POLZA_API_KEY is not configured"):
             # Should NOT silently return MockLLMClient
             AnalystSession()
 
