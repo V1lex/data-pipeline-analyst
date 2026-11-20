@@ -1,4 +1,4 @@
-"""Explicit development-only Gemini call with a SYNTHETIC verification fixture; never executes code."""
+"""Explicit development-only Polza AI call with a SYNTHETIC verification fixture; never executes code."""
 
 import argparse
 import json
@@ -6,8 +6,9 @@ import sys
 from pathlib import Path
 from uuid import uuid4
 
+from agent.analyst.polza import PolzaLLMClient
+from dotenv import load_dotenv
 from pipeline_generator.errors import PipelineError
-from pipeline_generator.gemini import GeminiClient
 from pipeline_generator.generator import PySparkGenerator
 from pipeline_generator.models import VerifiedContext
 
@@ -27,7 +28,8 @@ def main():
     client = None
     try:
         context = VerifiedContext.model_validate_json(args.context.read_text("utf-8"))
-        client = GeminiClient.from_environment(env_file=args.env_file)
+        load_dotenv(args.env_file, override=True)
+        client = PolzaLLMClient()
         result = PySparkGenerator(client).generate(context)
         args.output_dir.mkdir(parents=True, exist_ok=True)
         name = f"{Path(result.filename).stem}-{uuid4().hex}.py"
