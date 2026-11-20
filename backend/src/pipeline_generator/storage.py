@@ -1,5 +1,6 @@
 """Trusted backend/worker persistence. Each method closes its own short transaction."""
 
+import hashlib
 import re
 from typing import Any
 from uuid import UUID, uuid4
@@ -81,6 +82,59 @@ class PostgresRepository:
             _found(
                 connection.execute(
                     "DELETE FROM projects WHERE id=%s RETURNING id", (project_id,)
+                ).fetchone()
+            )
+
+    def store_source_file(
+        self, project_id: UUID, filename: str, content: bytes, profile: dict, *, max_files: int
+    ) -> UUID:
+        file_id = uuid4()
+        checksum = hashlib.sha256(content).hexdigest()
+        profile = {**profile, "file_id": str(file_id), "checksum": checksum}
+        fmt = filename.rsplit(".", 1)[-1].lower()
+        with self.connect() as connection:
+            _found(
+                connection.execute(
+                    "SELECT id FROM projects WHERE id=%s FOR UPDATE", (project_id,)
+                ).fetchone()
+            )
+            count = connection.execute(
+                "SELECT count(*) AS count FROM source_files WHERE project_id=%s", (project_id,)
+            ).fetchone()["count"]
+            if count >= max_files:
+                raise PipelineError("FILE_LIMIT", "Достигнут лимит числа файлов проекта.")
+            connection.execute(
+                """INSERT INTO source_files(id,project_id,filename,format,size_bytes,checksum,content,profile)
+                VALUES (%s,%s,%s,%s,%s,%s,%s,%s)""",
+                (
+                    file_id,
+                    project_id,
+                    filename,
+                    fmt,
+                    len(content),
+                    checksum,
+                    content,
+                    Jsonb(profile),
+                ),
+            )
+        return file_id
+
+    def list_source_files(self, project_id: UUID) -> list[dict]:
+        with self.connect() as connection:
+            _found(
+                connection.execute("SELECT id FROM projects WHERE id=%s", (project_id,)).fetchone()
+            )
+            return connection.execute(
+                "SELECT id,project_id,filename,format,size_bytes,checksum,profile,status,created_at FROM source_files WHERE project_id=%s ORDER BY created_at,id",
+                (project_id,),
+            ).fetchall()
+
+    def get_source_file(self, project_id: UUID, file_id: UUID) -> dict:
+        with self.connect() as connection:
+            return _found(
+                connection.execute(
+                    "SELECT * FROM source_files WHERE project_id=%s AND id=%s",
+                    (project_id, file_id),
                 ).fetchone()
             )
 

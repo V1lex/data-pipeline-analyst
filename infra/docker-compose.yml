@@ -25,6 +25,8 @@ services:
       POLZA_API_KEY: ${POLZA_API_KEY:-}
       POLZA_MODEL: ${POLZA_MODEL:-deepseek/deepseek-v4.1-flash-1017}
       POLZA_TIMEOUT: ${POLZA_TIMEOUT:-60}
+      SOURCE_MAX_BYTES: ${SOURCE_MAX_BYTES:-10485760}
+      SOURCE_MAX_FILES: ${SOURCE_MAX_FILES:-20}
     ports:
       - "127.0.0.1:8000:8000"
     command: ["sh", "-c", "python -m db.migrations && uvicorn api.app:app --host 0.0.0.0 --port 8000"]

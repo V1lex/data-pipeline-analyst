@@ -152,3 +152,18 @@ test('mobile rename failure keeps the form accessible and Escape cancels without
   await screenshot(page,'chat-management-mobile.png');
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
 });
+
+test('uploads a source and restores its profile after reload', async ({page}) => {
+  await page.goto('/');
+  await page.getByRole('textbox',{name:'Сообщение аналитику'}).fill('Данные о продажах');
+  await page.getByRole('textbox',{name:'Сообщение аналитику'}).press('Enter');
+  await expect(page.getByText('Требования собраны. Проверьте спецификацию.',{exact:true})).toBeVisible();
+  await page.getByRole('button',{name:'Файлы',exact:true}).click();
+  await page.locator('input[type=file]').setInputFiles({name:'orders.csv',mimeType:'text/csv',buffer:Buffer.from('город;сумма\nМосква;42\n')});
+  await expect(page.getByRole('button',{name:/orders.csv/})).toBeVisible();
+  await page.getByRole('button',{name:/orders.csv/}).click();
+  await expect(page.getByText('город · string · пропусков в выборке: 0')).toBeVisible();
+  await page.reload();
+  await page.getByRole('button',{name:'Файлы',exact:true}).click();
+  await expect(page.getByRole('button',{name:/orders.csv/})).toBeVisible();
+});

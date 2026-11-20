@@ -1,7 +1,10 @@
 """Local MVP API. Verification verdicts can only be written by the worker."""
 
+import asyncio
+import hashlib
 import logging
 import os
+import tempfile
 from contextlib import asynccontextmanager
 from functools import lru_cache
 from pathlib import Path
@@ -74,6 +77,8 @@ def create_app(*, repository=None, analyst_client=None, builder=None, generation
         status = (
             404 if error.code == "NOT_FOUND" else (502 if error.code.startswith("LLM_") else 409)
         )
+        if error.code in {"FILE_INVALID", "FILE_TOO_LARGE", "FILE_LIMIT"}:
+            status = 422
         if error.code in {"CONFIGURATION_ERROR", "STORAGE_ERROR"}:
             status = 503
         return JSONResponse(status_code=status, content={"error": error.to_dict()})
@@ -145,6 +150,69 @@ def create_app(*, repository=None, analyst_client=None, builder=None, generation
     def delete_project(project_id: UUID):
         repo().delete_project(project_id)
         return {"id": project_id}
+
+    @app.get("/api/v1/projects/{project_id}/sources")
+    def list_sources(project_id: UUID):
+        return repo().list_source_files(project_id)
+
+    @app.get("/api/v1/projects/{project_id}/sources/{file_id}")
+    def source_profile(project_id: UUID, file_id: UUID):
+        source = repo().get_source_file(project_id, file_id)
+        return {key: value for key, value in source.items() if key != "content"}
+
+    @app.post("/api/v1/projects/{project_id}/sources", status_code=201)
+    async def upload_source(project_id: UUID, request: Request):
+        from file_data.profile import ProfileError, profile_in_subprocess
+
+        repo().get_project(project_id)
+        max_size = max(1, int(os.getenv("SOURCE_MAX_BYTES", "10485760")))
+        max_files = max(1, int(os.getenv("SOURCE_MAX_FILES", "20")))
+        try:
+            length = int(request.headers.get("content-length", "-1"))
+        except ValueError:
+            length = -1
+        if length < 0 or length > max_size + 131072:
+            raise PipelineError("FILE_TOO_LARGE", "Укажите допустимый размер файла при загрузке.")
+        received = 0
+        receive = request.receive
+
+        async def bounded_receive():
+            nonlocal received
+            message = await receive()
+            received += len(message.get("body", b""))
+            if received > max_size + 131072:
+                raise PipelineError("FILE_TOO_LARGE", "Размер файла превышает допустимый предел.")
+            return message
+
+        bounded_request = Request(request.scope, receive=bounded_receive)
+        async with bounded_request.form(max_files=1, max_fields=4, max_part_size=131072) as form:
+            upload = form.get("file")
+            if upload is None or not hasattr(upload, "read"):
+                raise PipelineError("FILE_INVALID", "Выберите файл для загрузки.")
+            filename = str(upload.filename or "").replace("\\", "/").rsplit("/", 1)[-1]
+            if not filename or len(filename) > 255 or any(ord(char) < 32 for char in filename):
+                raise PipelineError("FILE_INVALID", "Некорректное имя файла.")
+            content = await upload.read(max_size + 1)
+            if len(content) > max_size:
+                raise PipelineError("FILE_TOO_LARGE", "Размер файла превышает допустимый предел.")
+            options = {key: form[key] for key in ("delimiter", "encoding") if key in form}
+        try:
+            with tempfile.TemporaryDirectory(prefix="source_profile_") as directory:
+                path = Path(directory) / "source"
+                path.write_bytes(content)
+                profile = await asyncio.to_thread(
+                    profile_in_subprocess,
+                    path,
+                    filename,
+                    hashlib.sha256(content).hexdigest(),
+                    options,
+                )
+        except ProfileError as error:
+            raise PipelineError("FILE_INVALID", str(error)) from None
+        file_id = repo().store_source_file(
+            project_id, filename, content, profile, max_files=max_files
+        )
+        return source_profile(project_id, file_id)
 
     @app.post("/api/v1/projects/{project_id}/messages")
     def send(project_id: UUID, body: MessageRequest):

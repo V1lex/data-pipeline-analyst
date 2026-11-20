@@ -326,3 +326,28 @@ def test_verification_explanation_belongs_to_selected_version(app_client, reposi
         ).status_code
         == 404
     )
+
+
+def test_upload_and_preview_source_files_are_project_scoped(app_client, repository):
+    first = repository.create_project("Sources")
+    other = repository.create_project("Other")
+    response = app_client.post(
+        f"/api/v1/projects/{first}/sources",
+        files={"file": ("orders.csv", "city;amount\nМосква;42\n".encode(), "text/csv")},
+    )
+    assert response.status_code == 201, response.text
+    source = response.json()
+    assert source["profile"]["sample"][0]["city"] == "Москва"
+    assert len(app_client.get(f"/api/v1/projects/{first}/sources").json()) == 1
+    assert app_client.get(f"/api/v1/projects/{other}/sources/{source['id']}").status_code == 404
+
+
+def test_upload_invalid_content_returns_safe_error(app_client, repository):
+    project = repository.create_project("Sources")
+    response = app_client.post(
+        f"/api/v1/projects/{project}/sources",
+        files={"file": ("nested.json", b'[{"a": {"b": 1}}]', "application/json")},
+    )
+    assert response.status_code == 422
+    assert response.json()["error"]["code"] == "FILE_INVALID"
+    assert repository.list_source_files(project) == []

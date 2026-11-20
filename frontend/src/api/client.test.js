@@ -31,3 +31,16 @@ test('network errors give a safe actionable message', async () => {
     });
   } finally { globalThis.fetch = original; }
 });
+
+test('multipart source upload lets browser set its own content type', async () => {
+  const original = globalThis.fetch;
+  const body = new FormData();
+  body.append('file', new Blob(['a,b\n1,2']), 'sample.csv');
+  globalThis.fetch = async (_url, options) => {
+    assert.equal(options.body, body);
+    assert.equal(options.headers['Content-Type'], undefined);
+    return { ok: true, json: async () => ({ id: 'file' }) };
+  };
+  try { assert.equal((await request('/projects/test/sources', { method: 'POST', body })).id, 'file'); }
+  finally { globalThis.fetch = original; }
+});
