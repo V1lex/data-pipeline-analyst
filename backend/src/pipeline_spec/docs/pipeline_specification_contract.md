@@ -364,3 +364,5 @@ formal_check_input = spec.formal_model
 3. **Ацикличность DAG (No Cycles)**:
    - Шаги и их зависимости проверяются алгоритмом Кана (Kahn's algorithm). При обнаружении цикла выбрасывается ошибка `ValueError: Cyclic dependency detected among steps: [...]`.
    - Метод `spec.get_topological_order()` возвращает строго упорядоченный список идентификаторов шагов для кодогенератора.
+
+Для проверки TLC каждая integer-переменная в `formal_model.variables` должна задавать конечные целые границы `min` и `max` (включительно). Формальная валидация находится в formal_check.

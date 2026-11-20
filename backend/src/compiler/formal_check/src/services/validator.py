@@ -53,6 +53,16 @@ def validate_input(data: Mapping[str, object]) -> ValidationResult:
     def error(location, message, kind="INVALID_EXPRESSION"):
         errors.append(ValidationErrorItem(type=kind, location=location, message=message))
 
+    for index, variable in enumerate(model.variables):
+        if variable.type is VariableType.INTEGER:
+            for field in ("min", "max"):
+                if getattr(variable, field) is None:
+                    error(
+                        f"variables[{index}].{field}",
+                        "Integer variables require finite minimum and maximum bounds",
+                        "UNBOUNDED_DOMAIN",
+                    )
+
     names = [(v.name, f"variables[{i}].name") for i, v in enumerate(model.variables)]
     names += [(t.name, f"transitions[{i}].name") for i, t in enumerate(model.transitions)]
     names += [(p.id, f"properties[{i}].id") for i, p in enumerate(model.properties)]

@@ -424,3 +424,20 @@ def test_runner_does_not_accept_killed_process_after_witness(tmp_path, monkeypat
         model_path=tmp_path / "model.tla", config_path=tmp_path / "safety.cfg", jar_path=jar
     )
     assert output.status is Status.INFRASTRUCTURE_ERROR
+
+
+def test_integer_variables_require_both_finite_bounds():
+    from compiler.formal_check.src.services.validator import validate_input
+
+    for variable, missing in [
+        ({"name": "x", "type": "integer"}, {"min", "max"}),
+        ({"name": "x", "type": "integer", "min": 0}, {"max"}),
+        ({"name": "x", "type": "integer", "max": 1}, {"min"}),
+    ]:
+        data = model()
+        data["variables"] = [variable]
+        result = validate_input(data)
+        assert result.status == "MODEL_INVALID"
+        assert {error.location for error in result.errors} >= {
+            f"variables[0].{field}" for field in missing
+        }

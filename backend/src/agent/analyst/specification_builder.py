@@ -42,7 +42,7 @@ BUILDER_SYSTEM_INSTRUCTION = """Ты — генератор формальных
 5. `sinks`: список выходных целевых датасетов (id, name, from_step, format, location, save_mode, partition_by).
 6. `constraints`: правила качества данных (not_null, range, unique, in_set).
 7. `formal_model`: конечный автомат для проверки TLA+/TLC:
-   - `variables`: enum, boolean, integer переменные состояния пайплайна (например, status, data_valid, attempts).
+   - `variables`: enum, boolean, integer переменные состояния пайплайна (например, status, data_valid, attempts). Для каждой integer переменной обязательны конечные целочисленные min и max.
    - `initial`: предикат начального состояния.
    - `transitions`: переходы между этапами с guard и effects (присваивание 'set').
    - `properties`: свойства invariant, forbidden_state, reachable, deadlock_free.
