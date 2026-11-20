@@ -66,7 +66,13 @@ def read_result(archive_path: Path, directory: Path) -> dict:
         return {"warning": "Архив сохранён, но табличные файлы для предпросмотра не найдены."}
     first = paths[0]
     options = {"delimiter": ","} if first.suffix.lower() == ".csv" else {}
-    profile = profile_file(first, first.name, "", options)
+    # Spark writes newline-delimited objects even though its parts end in .json.
+    is_json_lines = first.suffix.lower() == ".jsonl" or (
+        first.suffix.lower() == ".json" and first.name.startswith("part-")
+    )
+    profile = profile_file(
+        first, first.stem + ".jsonl" if is_json_lines else first.name, "", options
+    )
     preview = {
         "columns": profile["columns"],
         "rows": profile["sample"],
@@ -97,6 +103,36 @@ def read_result(archive_path: Path, directory: Path) -> dict:
                             writer.writerow(row)
             preview["csv_available"] = True
         except (OSError, ValueError, csv.Error):
+            csv_path.unlink(missing_ok=True)
+            preview["warning"] += " CSV-экспорт недоступен из-за ограничений размера или схемы."
+        return preview
+    if is_json_lines:
+        csv_path = directory / "result.csv"
+        columns = [column["name"] for column in profile["columns"]]
+        preview["rows"] = []
+        try:
+            with csv_path.open("w", encoding="utf-8", newline="") as output:
+                writer = csv.writer(LimitedWriter(output))
+                writer.writerow(columns)
+                for path in (item for item in paths if item.suffix.lower() in {".json", ".jsonl"}):
+                    with path.open(encoding="utf-8-sig") as source:
+                        for line in source:
+                            if not line.strip():
+                                continue
+                            row = json.loads(line)
+                            if (
+                                not isinstance(row, dict)
+                                or set(row) != set(columns)
+                                or any(isinstance(value, (dict, list)) for value in row.values())
+                            ):
+                                raise ValueError("Incompatible JSON schema")
+                            if len(preview["rows"]) < 20:
+                                preview["rows"].append(
+                                    {name: _json_value(row[name]) for name in columns}
+                                )
+                            writer.writerow([_json_value(row[name]) for name in columns])
+            preview["csv_available"] = True
+        except (OSError, ValueError):
             csv_path.unlink(missing_ok=True)
             preview["warning"] += " CSV-экспорт недоступен из-за ограничений размера или схемы."
         return preview

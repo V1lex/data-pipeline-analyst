@@ -134,7 +134,9 @@ def run_tlc_batch(
             model_path=model_path,
             config_path=config_path,
             jar_path=jar_path,
-            workers=max_workers,
+            # The batch already parallelises independent JVMs. Giving each JVM
+            # the full batch size would square the requested thread budget.
+            workers=1,
         )
         return index, output
 

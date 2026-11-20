@@ -114,6 +114,24 @@ def test_result_reader_exports_csv_parts_without_duplicate_header(tmp_path):
     assert "Казань,150" in (output / "result.csv").read_text()
 
 
+def test_result_reader_previews_and_exports_spark_json_lines(tmp_path):
+    import zipfile
+
+    from execution.result_reader import read_result
+
+    archive = tmp_path / "result.zip"
+    with zipfile.ZipFile(archive, "w") as zipped:
+        zipped.writestr(
+            "part-00000.json", '{"city":"Москва","amount":300}\n{"city":"Казань","amount":150}\n'
+        )
+    output = tmp_path / "output"
+    output.mkdir()
+    preview = read_result(archive, output)
+    assert preview["rows"][1]["city"] == "Казань"
+    assert preview["csv_available"]
+    assert "Казань,150" in (output / "result.csv").read_text()
+
+
 def test_result_preview_includes_later_parquet_part_when_first_is_empty(tmp_path):
     import zipfile
 

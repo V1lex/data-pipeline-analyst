@@ -78,7 +78,15 @@ def profile_file(path: Path, filename: str, checksum: str, options: dict | None 
             batch = next(parquet.iter_batches(batch_size=MAX_SAMPLE_ROWS), None)
             rows = batch.to_pylist() if batch else []
         else:
-            encoding = options.get("encoding", "utf-8-sig")
+            encoding = options.get("encoding")
+            if not encoding:
+                raw = path.read_bytes()
+                try:
+                    raw.decode("utf-8-sig")
+                    encoding = "utf-8-sig"
+                except UnicodeDecodeError:
+                    raw.decode("cp1251")
+                    encoding = "cp1251"
             if encoding not in {"utf-8", "utf-8-sig", "cp1251"}:
                 raise ProfileError("Неподдерживаемая кодировка.")
             read_options["encoding"] = encoding
@@ -91,9 +99,9 @@ def profile_file(path: Path, filename: str, checksum: str, options: dict | None 
                         try:
                             delimiter = csv.Sniffer().sniff(sample, delimiters=",;\t|").delimiter
                         except csv.Error:
-                            raise ProfileError(
-                                "Не удалось определить разделитель CSV; задайте его явно."
-                            ) from None
+                            # A table with a single column has no delimiter to detect.
+                            # Inconsistent multi-column records still fail validation below.
+                            delimiter = ","
                     if delimiter not in {",", ";", "\t", "|"}:
                         raise ProfileError("Неподдерживаемый разделитель CSV.")
                     read_options["delimiter"] = delimiter

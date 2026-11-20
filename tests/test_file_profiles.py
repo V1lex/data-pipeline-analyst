@@ -60,6 +60,25 @@ def test_cp1251_csv_and_explicit_delimiter(tmp_path):
     assert profile["sample"][0]["город"] == "Москва"
 
 
+def test_csv_detects_cp1251_and_semicolon_automatically(tmp_path):
+    from file_data.profile import profile_file
+
+    path = tmp_path / "data.csv"
+    path.write_bytes("город;сумма\nМосква;10\n".encode("cp1251"))
+    profile = profile_file(path, path.name, "hash")
+    assert profile["read_options"] == {"encoding": "cp1251", "delimiter": ";"}
+    assert profile["sample"][0]["город"] == "Москва"
+
+
+def test_csv_accepts_single_column_without_delimiter(tmp_path):
+    from file_data.profile import profile_file
+
+    path = tmp_path / "data.csv"
+    path.write_text("город\nМосква\nКазань\n", encoding="utf-8")
+    profile = profile_file(path, path.name, "hash")
+    assert profile["sample"] == [{"город": "Москва"}, {"город": "Казань"}]
+
+
 @pytest.mark.parametrize(
     "filename, content",
     [
