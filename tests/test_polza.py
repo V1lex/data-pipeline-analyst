@@ -80,3 +80,16 @@ def test_polza_missing_key_is_configuration_error():
 
     with pytest.raises(ValueError, match="POLZA_API_KEY"):
         PolzaLLMClient(api_key="")
+
+
+def test_standalone_specification_builder_defaults_to_polza(monkeypatch):
+    from agent.analyst.polza import PolzaLLMClient
+    from agent.analyst.specification_builder import SpecificationBuilder
+
+    monkeypatch.setenv("POLZA_API_KEY", "test-key")
+    builder = SpecificationBuilder()
+    try:
+        assert isinstance(builder.client, PolzaLLMClient)
+        assert builder.client.model_name == "deepseek/deepseek-v4.1-flash-1017"
+    finally:
+        builder.client.close()

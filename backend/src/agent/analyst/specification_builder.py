@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 from typing import Any
 
 from google import genai
@@ -10,10 +11,11 @@ from pipeline_spec.models import PipelineSpecification
 from pydantic import ValidationError
 from tenacity import retry, retry_if_exception, stop_after_attempt, wait_exponential
 
-from agent.analyst.config import DEFAULT_MODEL, DEFAULT_TEMPERATURE, GEMINI_API_KEY
+from agent.analyst.config import DEFAULT_MODEL, DEFAULT_TEMPERATURE
 from agent.analyst.llm_client import _is_transient_error
 from agent.analyst.models import ChatMessage, Role
 from agent.analyst.out_of_scope import OutOfScopeError, check_dialogue_scope
+from agent.analyst.polza import PolzaLLMClient
 
 logger = logging.getLogger(__name__)
 
@@ -85,7 +87,7 @@ class SpecificationBuilder:
     def __init__(
         self,
         api_key: str | None = None,
-        model_name: str = DEFAULT_MODEL,
+        model_name: str | None = None,
         temperature: float = DEFAULT_TEMPERATURE,
         max_retries: int = 3,
         client: genai.Client | None = None,
@@ -93,9 +95,11 @@ class SpecificationBuilder:
         if client is not None:
             self.client = client
         else:
-            key = api_key or GEMINI_API_KEY
-            self.client = genai.Client(api_key=key) if key else None
-        self.model_name = model_name
+            key = api_key if api_key is not None else os.getenv("POLZA_API_KEY", "")
+            self.client = PolzaLLMClient(api_key=key, model_name=model_name) if key else None
+        self.model_name = model_name or (
+            self.client.model_name if isinstance(self.client, PolzaLLMClient) else DEFAULT_MODEL
+        )
         self.temperature = temperature
         self.max_retries = max_retries
 
@@ -116,7 +120,7 @@ class SpecificationBuilder:
             raise OutOfScopeError(scope_res.reason)
 
         if not self.client:
-            raise RuntimeError("Gemini API client is not initialized (missing API key).")
+            raise RuntimeError("Polza AI client is not initialized (missing API key).")
 
         # 2. Prepare prompt
         dialogue_text = "\n".join(f"{msg.role.upper()}: {msg.content}" for msg in history)
