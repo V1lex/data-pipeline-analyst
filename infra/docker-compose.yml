@@ -49,6 +49,10 @@ services:
       DATABASE_SCHEMA: public
       TLC_JAR_PATH: /app/worker/tla2tools.jar
       TLC_TIMEOUT: ${TLC_TIMEOUT_SECONDS:-30}
+      TLC_WORKERS: ${TLC_WORKERS:-4}
+      TLC_HEAP_SIZE: ${TLC_HEAP_SIZE:-512m}
+      TLC_MAX_STATES: ${TLC_MAX_STATES:-1000000}
+    mem_limit: 3g
     depends_on:
       backend:
         condition: service_healthy

@@ -25,7 +25,7 @@ def run_tlc(
     config = Path(config_path) if config_path is not None else SAFETY_CONFIG_PATH
     jar = Path(jar_path or os.getenv("TLC_JAR_PATH", str(TLC_JAR_PATH))).resolve()
     worker_count = max(1, int(workers))
-    heap = os.getenv("TLC_HEAP_SIZE", "2g")
+    heap = os.getenv("TLC_HEAP_SIZE", "512m")
     try:
         if not jar.is_file():
             raise FileNotFoundError(f"TLC jar not found: {jar}")

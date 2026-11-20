@@ -52,8 +52,13 @@ after the current bounded verification finishes.
 
 TLC configurations are executed concurrently by `run_tlc_batch` within the
 overall timeout. Set `TLC_WORKERS` to control the number of parallel
-configurations (default: 4) and `TLC_HEAP_SIZE` to control the Java heap
-(default: `2g`). Each TLC process also receives the same worker count.
+configurations (default: 4) and `TLC_HEAP_SIZE` to control the per-process Java heap
+(default: `512m`). Each JVM uses one TLC worker; Compose caps the worker container
+at 3 GiB. `TLC_MAX_STATES` (default: 1000000) limits the product of declared
+variable domain sizes before TLC starts. This conservative admission check can
+reject models whose reachable states would fit the limit; it does not count
+the states actually explored by TLC. An oversized model returns
+`STATE_LIMIT_REACHED`, never a successful verification.
 
 Legacy `validate_input`, `compile_input`, `run_tlc` and `parse_tlc_output` entry
 points remain available. Use `compile_input(..., output_dir=...)` and explicit

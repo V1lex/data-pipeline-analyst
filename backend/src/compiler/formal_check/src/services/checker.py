@@ -1,6 +1,7 @@
 """Thin pipeline composition for formal-check stages."""
 
 import math
+import os
 import tempfile
 from pathlib import Path
 
@@ -37,6 +38,46 @@ def check_model(
             },
             "parsed": [],
         }
+
+    # Conservative admission control: bound the complete declared state space,
+    # rather than assuming that a large domain happens to have few reachable states.
+    try:
+        state_limit = int(os.getenv("TLC_MAX_STATES", "1000000"))
+        if state_limit < 1:
+            raise ValueError
+    except ValueError:
+        return {
+            "validation": model.model_dump(mode="json"),
+            "compilation": None,
+            "runner": {
+                "status": "invalid_state_limit",
+                "error": "TLC_MAX_STATES must be a positive integer",
+            },
+            "parsed": [],
+        }
+    possible_states = 1
+    for variable in model.variables:
+        if variable.type == "boolean":
+            size = 2
+        elif variable.type == "enum":
+            size = len(variable.values)
+        else:
+            size = variable.max - variable.min + 1
+        possible_states *= size
+        if possible_states > state_limit:
+            return {
+                "validation": model.model_dump(mode="json"),
+                "compilation": None,
+                "runner": {
+                    "outputs": [
+                        {
+                            "status": "state_limit_reached",
+                            "stderr": f"Declared state space has at least {possible_states} states; limit is {state_limit}. This conservative bound can exceed the number of reachable states.",
+                        }
+                    ]
+                },
+                "parsed": [],
+            }
 
     def run(directory: Path) -> dict:
         compilation = compile_input(model, output_dir=directory)
