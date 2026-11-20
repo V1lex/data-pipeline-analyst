@@ -41,6 +41,7 @@ def test_polza_supports_dialogue_specification_and_generator():
     "status, code, retryable",
     [
         (401, "LLM_AUTH_ERROR", False),
+        (402, "LLM_QUOTA_EXCEEDED", False),
         (429, "LLM_TRANSIENT_ERROR", True),
         (500, "LLM_TRANSIENT_ERROR", True),
     ],

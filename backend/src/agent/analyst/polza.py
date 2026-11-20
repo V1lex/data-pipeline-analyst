@@ -43,6 +43,8 @@ class PolzaLLMClient(BaseLLMClient):
             raise PipelineError(
                 "LLM_TRANSIENT_ERROR", "Ошибка соединения с Polza AI.", retryable=True
             ) from None
+        if response.status_code == 402:
+            raise PipelineError("LLM_QUOTA_EXCEEDED", "Проверьте баланс или лимит ключа Polza AI.")
         if response.status_code in (401, 403):
             raise PipelineError("LLM_AUTH_ERROR", "Polza AI отклонил ключ или доступ.")
         if response.status_code == 429 or response.status_code >= 500:

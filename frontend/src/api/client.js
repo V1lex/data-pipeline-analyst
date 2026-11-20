@@ -1,10 +1,17 @@
 const BASE = '/api/v1';
 export async function request(path, options = {}) {
-  const response = await fetch(BASE + path, {
+  let response;
+  try { response = await fetch(BASE + path, {
     ...options,
     headers: { 'Content-Type': 'application/json', ...options.headers },
     body: options.body === undefined ? undefined : JSON.stringify(options.body),
-  });
+  }); } catch (cause) {
+    if (cause?.name === 'AbortError') throw cause;
+    const error = new Error('Не удалось связаться с приложением. Проверьте соединение и повторите.');
+    error.code = 'NETWORK_ERROR';
+    error.retryable = true;
+    throw error;
+  }
   if (!response.ok) {
     let payload;
     try { payload = await response.json(); } catch { /* fallback below */ }

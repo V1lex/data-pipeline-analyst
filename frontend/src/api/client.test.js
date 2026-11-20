@@ -18,3 +18,16 @@ test('model clarification keeps actual questions visible to the user', async () 
     });
   } finally { globalThis.fetch = original; }
 });
+
+test('network errors give a safe actionable message', async () => {
+  const original = globalThis.fetch;
+  globalThis.fetch = async () => { throw new TypeError('Failed to fetch'); };
+  try {
+    await assert.rejects(request('/projects'), error => {
+      assert.equal(error.code, 'NETWORK_ERROR');
+      assert.equal(error.retryable, true);
+      assert.match(error.message, /соединение/i);
+      return true;
+    });
+  } finally { globalThis.fetch = original; }
+});
