@@ -1,0 +1,119 @@
+name: Integration checks
+
+on:
+  pull_request:
+    branches: [dev]
+  push:
+    branches: [dev]
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: pipeline
+          POSTGRES_PASSWORD: test-password
+          POSTGRES_DB: pipeline_test
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U pipeline -d pipeline_test"
+          --health-interval 5s --health-timeout 5s --health-retries 12
+    env:
+      TEST_DATABASE_URL: postgresql://pipeline:test-password@localhost:5432/pipeline_test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - run: uv sync --frozen --extra dev
+      - run: python scripts/download_tlc.py
+      - run: uv run ruff check backend/src tests examples worker scripts
+      - run: uv run pytest -q
+
+  frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci --prefix frontend
+      - run: npm test --prefix frontend
+      - run: npm run build --prefix frontend
+
+  compose-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python scripts/download_tlc.py
+      - run: docker compose --env-file .env.example -f infra/docker-compose.yml up --build -d --wait
+      - run: curl --fail --silent http://127.0.0.1:8000/api/v1/health && curl --fail --silent http://127.0.0.1:3000/ > /dev/null
+      - if: always()
+        run: docker compose --env-file .env.example -f infra/docker-compose.yml logs --no-color
+      - if: always()
+        run: docker compose --env-file .env.example -f infra/docker-compose.yml down -v
+
+  browser-mocked-model:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: pipeline
+          POSTGRES_PASSWORD: test-password
+          POSTGRES_DB: pipeline_test
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U pipeline -d pipeline_test"
+          --health-interval 5s --health-timeout 5s --health-retries 12
+    env:
+      TEST_DATABASE_URL: postgresql://pipeline:test-password@localhost:5432/pipeline_test
+      FRONTEND_E2E_URL: http://127.0.0.1:5174
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: uv sync --frozen --extra dev
+      - run: python scripts/download_tlc.py
+      - run: npm ci --prefix frontend
+      - run: cd frontend && npx playwright install --with-deps chromium
+      - name: Start QA API and frontend
+        run: |
+          PYTHONPATH=. uv run python tests/browser_preview.py > /tmp/qa-api.log 2>&1 &
+          DPA_API_TARGET=http://127.0.0.1:8001 npm run dev --prefix frontend -- --port 5174 > /tmp/qa-ui.log 2>&1 &
+          for i in $(seq 1 60); do
+            if curl -fsS http://127.0.0.1:8001/api/v1/health >/dev/null && curl -fsS http://127.0.0.1:5174/ >/dev/null; then exit 0; fi
+            sleep 1
+          done
+          cat /tmp/qa-api.log /tmp/qa-ui.log
+          exit 1
+      - run: npm run test:e2e --prefix frontend
+      - if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: browser-failure
+          path: |
+            frontend/test-results
+            /tmp/qa-api.log
+            /tmp/qa-ui.log

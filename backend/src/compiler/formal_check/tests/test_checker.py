@@ -240,10 +240,11 @@ def test_check_model_aggregates_existential_reachability(monkeypatch, tmp_path):
     assert result["parsed"][1]["status"] == "PROPERTY_HOLDS"
     assert result["parsed"][1]["property_id"] == "P"
     assert len(calls) == 2
-    assert "INVARIANT P" not in calls[0][1]
-    assert "PROPERTY IsDAG" in calls[0][1]
-    assert "INVARIANT P" in calls[1][1]
-    assert not calls[0][0].exists()
+    by_config = {path.name: (path, text) for path, text in calls}
+    assert "INVARIANT P" not in by_config["safety.cfg"][1]
+    assert "PROPERTY IsDAG" in by_config["safety.cfg"][1]
+    assert "INVARIANT P" in by_config["P.cfg"][1]
+    assert not by_config["safety.cfg"][0].exists()
 
 
 def test_unreachable_target_blocks_overall_success(monkeypatch):
