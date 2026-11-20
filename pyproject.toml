@@ -20,6 +20,7 @@ addopts = "-ra"
 markers = ["postgres: requires TEST_DATABASE_URL", "spark: explicit local synthetic-data demonstration"]
 
 [tool.ruff]
+extend-exclude = ["examples/live-results"]
 target-version = "py312"
 line-length = 100
 
