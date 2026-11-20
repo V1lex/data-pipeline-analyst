@@ -91,18 +91,20 @@ class FormalFeedbackExplainer:
         # Case 1: All properties hold
         if status_str == "PROPERTY_HOLDS":
             stats = _get(result, "statistics")
-            depth = _get(stats, "depth", 0)
-            states = _get(stats, "states_generated", 0)
-            distinct = _get(stats, "distinct_states", 0)
+            stats_summary = ""
+            if stats:
+                depth = _get(stats, "depth", "неизвестна")
+                states = _get(stats, "states_generated", "неизвестно")
+                distinct = _get(stats, "distinct_states", "неизвестно")
+                stats_summary = f"Исследовано состояний: {states} (уникальных: {distinct}, глубина графа: {depth}). "
 
             return VerificationExplanation(
                 status="PROPERTY_HOLDS",
                 title="✓ Формальная верификация пройдена успешно!",
                 summary=(
-                    f"Модель-чекер TLC подтвердил корректность спецификации конвейера '{pipeline_name}' "
+                    f"Модель-чекер TLC завершил проверку модели конвейера '{pipeline_name}' "
                     f"(ID: {pipeline_id}, ред. {current_rev}) при заданных допущениях. "
-                    f"Все инварианты безопасности, ацикличность переходов (IsDAG) и отсутствие взаимных блокировок (deadlock-free) выполняются. "
-                    f"Исследовано состояний: {states} (уникальных: {distinct}, глубина графа: {depth}). "
+                    f"{stats_summary}"
                     f"Обратите внимание: формальная проверка модели подтверждает логику переходов состояний, "
                     f"но не доказывает корректность вычислений PySpark и качество данных в реальных таблицах."
                 ),
@@ -134,30 +136,32 @@ class FormalFeedbackExplainer:
             trace_steps: list[str] = []
             for s in raw_steps:
                 s_num = _get(s, "number", 0)
-                trans = _get(s, "transition", None) or "Начальное состояние (Init)"
+                trans = _get(s, "transition", None) or (
+                    "Начальное состояние (Init)" if s_num == 0 else "переход не указан"
+                )
                 state = _get(s, "state", {})
                 state_str = ", ".join(f"{k} = {v}" for k, v in state.items())
                 trace_steps.append(f"Шаг {s_num} [{trans}]: {state_str}")
 
-            # Tailored summary by property kind
-            prop_lower = prop_id.lower()
-            if "deadlock" in prop_lower:
-                issue_detail = (
-                    "Обнаружена взаимная блокировка (deadlock): система перешла в состояние, "
-                    "из которого нет разрешенных переходов (отличное от нормального завершения)."
-                )
-            elif "reach" in prop_lower:
-                issue_detail = (
-                    f"Свойство достижимости '{prop_id}' нарушено: целевое состояние недостижимо "
-                    f"из-за блокирующих guard-условий."
-                )
-            else:
-                issue_detail = f"Обнаружено нарушение свойства безопасности '{prop_id}'."
-
-            summary = (
-                f"{issue_detail} в спецификации '{pipeline_name}' (ID: {pipeline_id}, ред. {current_rev}). "
-                f"Модель-чекер TLC зафиксировал контрпример из {len(trace_steps)} шагов."
+            formal_model = specification.formal_model or {}
+            properties = _get(formal_model, "properties", []) or []
+            prop = next((p for p in properties if _get(p, "id") == prop_id), None)
+            kind = _get(prop, "type")
+            descriptions = {
+                "invariant": "инварианта",
+                "forbidden_state": "запрета состояния",
+                "reachable": "достижимости",
+                "deadlock_free": "отсутствия блокировок",
+            }
+            issue_detail = (
+                f"Обнаружено нарушение свойства {descriptions.get(kind, 'модели')} '{prop_id}'."
             )
+            trace_summary = (
+                f"TLC сохранил контрпример из {len(trace_steps)} шагов."
+                if trace_steps
+                else "Контрпример отсутствует."
+            )
+            summary = f"{issue_detail} Спецификация '{pipeline_name}' (ID: {pipeline_id}, ред. {current_rev}). {trace_summary}"
 
             proposal = self._generate_revision_proposal(
                 prop_id, raw_steps, specification, base_revision=current_rev
@@ -293,28 +297,24 @@ class FormalFeedbackExplainer:
         base_revision: int = 1,
     ) -> RevisionProposal:
         """Describe the observed failure without guessing a model-changing repair."""
-        last_step = steps[-1] if steps else None
-        if last_step:
-            last_transition = (
-                getattr(last_step, "transition", None)
-                if hasattr(last_step, "transition")
-                else last_step.get("transition")
+        if steps:
+            last_step = steps[-1]
+            transition = (
+                last_step.get("transition")
+                if isinstance(last_step, dict)
+                else getattr(last_step, "transition", None)
             )
-            last_state = (
-                getattr(last_step, "state", {})
-                if hasattr(last_step, "state")
-                else last_step.get("state", {})
+            state = (
+                last_step.get("state", {})
+                if isinstance(last_step, dict)
+                else getattr(last_step, "state", {})
             )
+            issue = f"Свойство '{prop_id}' нарушено; последний сохранённый переход: {transition or 'не указан'}, состояние: {state}."
         else:
-            last_transition = "действие"
-            last_state = {}
-
-        last_trans_name = last_transition or "Write"
-
-        issue = f"Свойство '{prop_id}' нарушено при выполнении перехода '{last_trans_name}' (состояние: {last_state})."
+            issue = f"Свойство '{prop_id}' нарушено; трасса контрпримера отсутствует."
         proposed = "Разобрать нарушенное свойство и контрпример, затем предложить явное изменение модели для согласования."
         rationale = (
-            "Трасса показывает нарушение, но сама по себе не определяет корректное исправление. "
+            "Результат проверки сам по себе не определяет корректное исправление. "
             "После согласованного изменения требуется повторная проверка TLC."
         )
         patch: dict[str, Any] = {}

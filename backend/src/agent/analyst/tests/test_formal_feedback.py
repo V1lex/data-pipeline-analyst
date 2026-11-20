@@ -200,3 +200,19 @@ def test_empty_patch_never_synthesizes_unknown_variable_guard(sample_spec):
     )
     assert explanation.proposal.patch_data == {}
     assert "data_valid" not in explanation.proposal.proposed_change
+
+
+def test_success_explanation_does_not_claim_unreported_checks(sample_spec):
+    explanation = FormalFeedbackExplainer().explain({"status": "PROPERTY_HOLDS"}, sample_spec)
+    assert "IsDAG" not in explanation.summary
+    assert "deadlock-free" not in explanation.summary
+    assert "0 (уникальных: 0" not in explanation.summary
+
+
+def test_missing_trace_does_not_invent_transition(sample_spec):
+    explanation = FormalFeedbackExplainer().explain(
+        {"status": "PROPERTY_VIOLATED", "property_id": "SomeProperty"}, sample_spec
+    )
+    assert explanation.trace_steps == []
+    assert "Write" not in explanation.proposal.issue_summary
+    assert "контрпример отсутствует" in explanation.summary.lower()
