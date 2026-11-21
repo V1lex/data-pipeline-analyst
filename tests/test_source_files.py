@@ -98,6 +98,36 @@ def test_dialogue_includes_selected_profiles_as_untrusted_data(repository):
     assert "недоверенные данные" in client.instruction.lower()
 
 
+def test_files_added_in_different_turns_remain_in_model_context(repository):
+    from agent.analyst.models import AnalystResponse
+    from agent.workflow import AnalystWorkflow
+
+    project = repository.create_project("context")
+    profile = {"columns": [{"name": "value", "type": "integer"}], "sample": [{"value": 1}]}
+    first = repository.store_source_file(project, "first.csv", b"value\n1\n", profile, max_files=20)
+    second = repository.store_source_file(
+        project, "second.csv", b"value\n2\n", profile, max_files=20
+    )
+
+    class CapturingClient:
+        def generate_response(self, messages, system_instruction):
+            self.instruction = system_instruction
+            return AnalystResponse(message="Уточним", is_complete=False)
+
+    client = CapturingClient()
+    workflow = AnalystWorkflow(repository, client, None)
+    repository.select_source_files(project, [first])
+    workflow.send(project, "Первый файл", file_ids=[first])
+    repository.select_source_files(project, [first, second])
+    workflow.send(project, "Второй файл", file_ids=[second])
+    assert str(first) in client.instruction and str(second) in client.instruction
+    messages = [
+        message for message in repository.list_messages(project) if message["role"] == "user"
+    ]
+    assert messages[0]["attachments"][0]["id"] == str(first)
+    assert messages[1]["attachments"][0]["id"] == str(second)
+
+
 def test_specification_cannot_use_other_file_or_unknown_source_column():
     from agent.analyst.specification_builder import MockSpecificationBuilder
     from agent.workflow import validate_source_context

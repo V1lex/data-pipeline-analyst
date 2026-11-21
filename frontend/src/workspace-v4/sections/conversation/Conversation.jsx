@@ -162,6 +162,7 @@ export default function Conversation({
                     >
                       {!isUser && <span className="pa-conversation__mark"><Icon name="wave" size={25}/></span>}
                       <div className="pa-conversation__message-body">
+                        {isUser && message.attachments?.length > 0 && <div className="pa-conversation__sent-files">{message.attachments.map(file => <span className="pa-conversation__sent-file" key={file.id}><Icon name="file" size={15}/>{file.filename}</span>)}</div>}
                         <p className="pa-conversation__text">{message.content}</p>
                         {!isUser && index === lastAssistantIndex && questions.length > 0 && (
                           <ul className="pa-conversation__questions">
@@ -199,7 +200,7 @@ export default function Conversation({
                 })}
                 {pendingMessage && (
                   <article className="pa-conversation__message pa-conversation__message--user" aria-label="Ваше отправляемое сообщение">
-                    <div className="pa-conversation__message-body"><p className="pa-conversation__text">{pendingMessage}</p></div>
+                    <div className="pa-conversation__message-body">{pendingMessage.attachments?.length > 0 && <div className="pa-conversation__sent-files">{pendingMessage.attachments.map(file => <span className="pa-conversation__sent-file" key={file.id}><Icon name="file" size={15}/>{file.filename}</span>)}</div>}<p className="pa-conversation__text">{typeof pendingMessage === 'string' ? pendingMessage : pendingMessage.content}</p></div>
                   </article>
                 )}
               </div>

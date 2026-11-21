@@ -98,6 +98,8 @@ class PolzaLLMClient(BaseLLMClient):
                             "content": (
                                 "Предыдущий ответ не прошёл проверку формата. Исправь только формат и верни полный JSON. "
                                 "Допустимые категории вопросов: sources, fields, formula, business_rules, sinks, general. "
+                                "draft должен содержать массивы sources, steps, sinks с объектами и строковыми id; "
+                                "operation каждого шага — объект с полем type, а не строка. "
                                 "Ошибки полей: " + json.dumps(problems, ensure_ascii=False)
                             ),
                         },

@@ -4,7 +4,7 @@ from datetime import datetime
 from enum import StrEnum
 from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from agent.analyst.completeness.models import DraftParameter
 
@@ -73,3 +73,31 @@ class AnalystResponse(BaseModel):
         default=None,
         description="Кратко сформулированная бизнес-цель запроса",
     )
+
+    @field_validator("draft")
+    @classmethod
+    def validate_draft_structure(cls, draft):
+        if draft is None:
+            return draft
+        for collection in ("sources", "steps", "sinks"):
+            items = draft.get(collection)
+            if not isinstance(items, list):
+                raise ValueError(f"draft.{collection} must be a list")
+            ids = []
+            for item in items:
+                if (
+                    not isinstance(item, dict)
+                    or not isinstance(item.get("id"), str)
+                    or not item["id"].strip()
+                ):
+                    raise ValueError(f"draft.{collection} must contain objects with string ids")
+                ids.append(item["id"])
+                if (
+                    collection == "steps"
+                    and "operation" in item
+                    and not isinstance(item["operation"], dict)
+                ):
+                    raise ValueError("draft.steps.operation must be an object")
+            if len(ids) != len(set(ids)):
+                raise ValueError(f"draft.{collection} ids must be unique")
+        return draft

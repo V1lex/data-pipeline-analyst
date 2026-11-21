@@ -510,6 +510,7 @@ class PostgresRepository:
         *,
         user: str | None = None,
         assistant: str | None = None,
+        attachments: list[dict] | None = None,
     ) -> None:
         with self.connect() as connection:
             row = connection.execute(
@@ -522,8 +523,14 @@ class PostgresRepository:
             for role, content in [("user", user), ("assistant", assistant)]:
                 if content is not None:
                     connection.execute(
-                        "INSERT INTO messages(id,project_id,role,content) VALUES (%s,%s,%s,%s)",
-                        (uuid4(), project_id, role, content),
+                        "INSERT INTO messages(id,project_id,role,content,attachments) VALUES (%s,%s,%s,%s,%s)",
+                        (
+                            uuid4(),
+                            project_id,
+                            role,
+                            content,
+                            Jsonb(attachments or [] if role == "user" else []),
+                        ),
                     )
 
     def abort_dialogue(self, project_id: UUID, token: UUID) -> None:

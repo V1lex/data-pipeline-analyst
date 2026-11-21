@@ -152,7 +152,7 @@ export class WorkspaceController {
     const content = this.state.text.trim() || (this.state.attachments.length ? 'Проанализируй прикреплённые файлы.' : '');
     if (!content || this.state.busy || this.state.loadingProject) return null;
     return this._perform('Аналитик отвечает…', async () => {
-      this._set({ pendingMessage: content });
+      this._set({ pendingMessage: { content, attachments: this.state.attachments.map(item => ({ id: item.id, filename: item.file.name })) } });
       let id = this.state.projectId;
       if (!id) {
         const name = content.split('\n')[0].slice(0, 70);
@@ -174,11 +174,12 @@ export class WorkspaceController {
         const ids = [...new Set([...selected.map(item => item.id), ...this.state.attachments.map(item => item.uploadedId)])];
         await this.api(`/projects/${id}/sources/selection`, { method: 'PUT', body: { file_ids: ids } });
       }
-      const turn = await this.api(`/projects/${id}/messages`, { method: 'POST', body: { content } });
+      const attached = this.state.attachments.map(item => ({ id: item.uploadedId, filename: item.file.name }));
+      const turn = await this.api(`/projects/${id}/messages`, { method: 'POST', body: { content, file_ids: attached.map(item => item.id) } });
       // The server acknowledged this turn. A later read failure must never offer
       // the same text as an unsent message and accidentally post it twice.
       const previous = this.state.project;
-      const messages = [...(previous?.messages || []), { id: `${id}:ack-user:${previous?.messages?.length || 0}`, role: 'user', content }];
+      const messages = [...(previous?.messages || []), { id: `${id}:ack-user:${previous?.messages?.length || 0}`, role: 'user', content, attachments: attached }];
       if (turn.response?.message) messages.push({ id: `${id}:ack-assistant:${messages.length}`, role: 'assistant', content: turn.response.message });
       ++this.specRead;
       this._set({ text: '', attachments: [], pendingMessage: null, specId: null, spec: null, generated: null,

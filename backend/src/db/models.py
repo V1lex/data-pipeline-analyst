@@ -116,6 +116,9 @@ class MessageModel(Base):
     )
     role: Mapped[MessageRole] = mapped_column(Text, nullable=False, default=MessageRole.user)
     content: Mapped[str] = mapped_column(Text, nullable=False)
+    attachments: Mapped[list] = mapped_column(
+        JSONB, nullable=False, server_default=text("'[]'::jsonb")
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=text("clock_timestamp()")
     )

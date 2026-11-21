@@ -160,11 +160,13 @@ test('uploads a source and restores its profile after reload', async ({page}) =>
   await page.getByRole('textbox',{name:'Сообщение аналитику'}).fill('Данные о продажах');
   await page.getByRole('textbox',{name:'Сообщение аналитику'}).press('Enter');
   await expect(page.getByText('Требования собраны. Проверьте спецификацию.',{exact:true})).toBeVisible();
+  await expect(page.getByLabel('Ваше сообщение').getByText('orders.csv',{exact:true})).toBeVisible();
   await page.getByRole('button',{name:'Файлы',exact:true}).click();
   await expect(page.getByText('orders.csv',{exact:true})).toBeVisible();
   await page.getByRole('button',{name:'Профиль',exact:true}).click();
   await expect(page.getByText('город · string · пропусков в выборке: 0')).toBeVisible();
   await page.reload();
+  await expect(page.getByLabel('Ваше сообщение').getByText('orders.csv',{exact:true})).toBeVisible();
   await page.getByRole('button',{name:'Файлы',exact:true}).click();
   await expect(page.getByText('orders.csv',{exact:true})).toBeVisible();
 });

@@ -212,6 +212,9 @@
 }
 .pa-conversation__attachment > span { min-width: 0; overflow-wrap: anywhere; }
 .pa-conversation__attachment button { display: inline-flex; flex: none; padding: 3px; border: 0; background: transparent; cursor: pointer; }
+.pa-conversation__sent-files { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
+.pa-conversation__sent-file { display: inline-flex; align-items: center; gap: 6px; min-width: 0; max-width: 100%; padding: 5px 9px; border-radius: 8px; background: #fff; font-size: 12px; overflow-wrap: anywhere; }
+.pa-conversation__sent-file svg { flex: none; }
 
 .pa-conversation__composer textarea,
 .pa-conversation__composer textarea:focus-visible {

@@ -238,7 +238,7 @@ def create_app(*, repository=None, analyst_client=None, builder=None, generation
 
     @app.post("/api/v1/projects/{project_id}/messages")
     def send(project_id: UUID, body: MessageRequest):
-        return model_call(lambda: workflow().send(project_id, body.content))
+        return model_call(lambda: workflow().send(project_id, body.content, file_ids=body.file_ids))
 
     @app.post("/api/v1/projects/{project_id}/specifications/build", status_code=201)
     def build(project_id: UUID):

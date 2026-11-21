@@ -387,6 +387,25 @@ def test_select_source_files_via_api(app_client, repository):
     )
 
 
+def test_message_preserves_attached_files_in_history(app_client, repository):
+    project = repository.create_project("Attachments")
+    first = repository.store_source_file(
+        project, "orders.csv", b"a\n1\n", {"columns": []}, max_files=20
+    )
+    second = repository.store_source_file(
+        project, "prices.csv", b"a\n2\n", {"columns": []}, max_files=20
+    )
+    repository.select_source_files(project, [first, second])
+    response = app_client.post(
+        f"/api/v1/projects/{project}/messages",
+        json={"content": "Обработай", "file_ids": [str(second)]},
+    )
+    assert response.status_code == 200, response.text
+    messages = app_client.get(f"/api/v1/projects/{project}").json()["messages"]
+    user = next(message for message in messages if message["role"] == "user")
+    assert user["attachments"] == [{"id": str(second), "filename": "prices.csv"}]
+
+
 def test_execution_api_requires_verified_saved_artifact_and_queues_idempotently(
     app_client, repository
 ):

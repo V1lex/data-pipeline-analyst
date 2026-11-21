@@ -187,16 +187,27 @@ class AnalystWorkflow:
         self.client = client
         self.builder = builder
 
-    def send(self, project_id, content):
+    def send(self, project_id, content, *, file_ids=None):
         lease, snapshot = self.repository.begin_dialogue(project_id)
         try:
             session = AnalystSession.restore(snapshot, llm_client=self.client)
-            session.system_instruction += source_context(
-                self.repository.selected_source_files(project_id)
-            )
+            sources = self.repository.selected_source_files(project_id)
+            by_id = {str(source["id"]): source for source in sources}
+            ids = [str(file_id) for file_id in (file_ids or [])]
+            if len(ids) != len(set(ids)) or any(file_id not in by_id for file_id in ids):
+                raise PipelineError("FILE_INVALID", "Вложение не выбрано в этом диалоге.")
+            attachments = [
+                {"id": file_id, "filename": by_id[file_id]["filename"]} for file_id in ids
+            ]
+            session.system_instruction += source_context(sources)
             response = session.send_message(content)
             self.repository.commit_dialogue(
-                project_id, lease, session.snapshot(), user=content, assistant=response.message
+                project_id,
+                lease,
+                session.snapshot(),
+                user=content,
+                assistant=response.message,
+                attachments=attachments,
             )
             return {
                 "response": response.model_dump(mode="json"),

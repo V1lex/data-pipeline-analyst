@@ -14,7 +14,7 @@ test('first message uploads attached sources before asking the analyst', async (
     if (path.endsWith('/sources/selection') && options.method === 'PUT') {
       assert.deepEqual(options.body.file_ids, ['f1']); return [{ id: 'f1' }];
     }
-    if (path.endsWith('/messages')) return {};
+    if (path.endsWith('/messages')) { assert.deepEqual(options.body.file_ids, ['f1']); return {}; }
     return project;
   };
   const store = new WorkspaceController({ api, uuid: () => 'attachment-1' });

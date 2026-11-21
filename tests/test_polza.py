@@ -74,6 +74,38 @@ def test_polza_repairs_invalid_analyst_category_before_returning_response():
     assert "clarification_questions" in requests[1]["messages"][-1]["content"]
 
 
+def test_polza_repairs_draft_with_string_operation():
+    from agent.analyst.polza import PolzaLLMClient
+
+    calls = []
+
+    def respond(request):
+        calls.append(request)
+        operation = "join" if len(calls) == 1 else {"type": "join"}
+        payload = {
+            "message": "Уточним",
+            "is_complete": False,
+            "draft": {
+                "sources": [],
+                "steps": [{"id": "join", "operation": operation}],
+                "sinks": [],
+            },
+        }
+        return httpx.Response(
+            200,
+            json={
+                "choices": [{"message": {"content": json.dumps(payload)}, "finish_reason": "stop"}]
+            },
+        )
+
+    client = PolzaLLMClient(
+        api_key="test", client=httpx.Client(transport=httpx.MockTransport(respond))
+    )
+    result = client.generate_response([ChatMessage(role=Role.USER, content="Данные")], "system")
+    assert result.draft["steps"][0]["operation"] == {"type": "join"}
+    assert len(calls) == 2
+
+
 def test_polza_stops_after_bounded_invalid_responses():
     from agent.analyst.polza import PolzaLLMClient
 
