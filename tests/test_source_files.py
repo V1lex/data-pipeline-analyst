@@ -5,6 +5,34 @@ from psycopg import errors
 pytestmark = pytest.mark.postgres
 
 
+def test_dialogue_supplies_full_file_missing_value_counts(repository):
+    import tempfile
+    from pathlib import Path
+
+    from agent.analyst.models import AnalystResponse
+    from agent.workflow import AnalystWorkflow
+    from file_data.profile import profile_file
+
+    project = repository.create_project("Full file check")
+    contents = ("price\n" + "5\n" * 1000 + '""\n').encode()
+    with tempfile.TemporaryDirectory() as directory:
+        path = Path(directory) / "orders.csv"
+        path.write_bytes(contents)
+        profile = profile_file(path, path.name, "")
+    source = repository.store_source_file(project, "orders.csv", contents, profile, max_files=3)
+    repository.select_source_files(project, [source])
+
+    class Client:
+        def generate_response(self, messages, system_instruction):
+            self.instruction = system_instruction
+            return AnalystResponse(message="Найден пропуск", is_complete=False)
+
+    client = Client()
+    AnalystWorkflow(repository, client, None).send(project, "Проверь пропуски в файле")
+    assert '"checked_rows": 1001' in client.instruction
+    assert '"example_rows": [1001]' in client.instruction
+
+
 def test_source_file_is_project_bound_and_immutable(repository):
     project = repository.create_project("one")
     other = repository.create_project("two")

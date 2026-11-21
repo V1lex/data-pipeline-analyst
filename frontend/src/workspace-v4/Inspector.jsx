@@ -2,7 +2,6 @@ import { useEffect, useRef, useState } from 'react';
 import PipelineGraph from '../components/PipelineGraph.jsx';
 import { artifactUrl, request } from '../api/client.js';
 import { Icon } from './icons.jsx';
-import FileIngestionPanel from './FileIngestionPanel.jsx';
 
 const names = { DRAFT: 'На согласовании', APPROVED: 'Согласована', QUEUED: 'В очереди', RUNNING: 'Проверяется', PROPERTY_HOLDS: 'Модель проверена', PROPERTY_VIOLATED: 'Найдено нарушение', PROPERTY_UNREACHABLE: 'Состояние недостижимо', MODEL_INVALID: 'Нужно исправить модель', TIMEOUT: 'Проверка не завершилась вовремя', INFRASTRUCTURE_ERROR: 'Проверка недоступна', STATE_LIMIT_REACHED: 'Достигнут лимит состояний' };
 export const statusLabel = status => names[status] || status || '';
@@ -100,18 +99,19 @@ export function VerificationPanel({ state, view, onVerify, onGenerate, onRevisio
       <strong>{statusLabel(result?.status || run.status)}</strong>
     </div>
     {view.pending && <p>Результат появится здесь автоматически.</p>}
-    {explanation && <section aria-label="Объяснение проверки"><h3>{explanation.title}</h3><p>{explanation.summary}</p></section>}
+    {explanation && <section aria-label="Объяснение проверки"><p>{result?.status === 'PROPERTY_UNREACHABLE' ? 'Проверка не нашла путь от начала до указанного состояния в модели. Это ошибка плана проверки, а не результат обработки файлов.' : explanation.summary}</p></section>}
     {explanationError && <p className="pa-inspector-error">Объяснение недоступно: {explanationError}</p>}
-    {result?.property_id && <p>Свойство: <code>{result.property_id}</code></p>}
-    {result?.error && <p className="pa-inspector-error">{typeof result.error === 'string' ? result.error : JSON.stringify(result.error)}</p>}
+    {result?.error && result?.status !== 'PROPERTY_UNREACHABLE' && <p className="pa-inspector-error">{typeof result.error === 'string' ? result.error : JSON.stringify(result.error)}</p>}
     {result?.errors?.length > 0 && <ul className="pa-validation-errors">{result.errors.map((error, index) => <li key={index}><code>{error.location}</code> — {error.message}</li>)}</ul>}
     {trace.length > 0 && <div className="pa-trace"><h3>Контрпример</h3>{trace.map((step,index) => <details key={index} open={index === 0}><summary>{step.transition || 'Начальное состояние'}</summary><pre>{JSON.stringify(step.state,null,2)}</pre></details>)}</div>}
-    {canPropose && <section aria-label="Исправление модели"><h3>Исправление модели</h3><p>Предложение меняет только переходы формальной модели. Свойства и согласованные данные сохраняются; новая версия потребует отдельной проверки.</p>{proposalError && <p className="pa-inspector-error" role="alert">{proposalError}</p>}{proposal?.status === 'PROPOSED' ? <div><p>{proposal.proposal.issue_summary}</p><p>{proposal.proposal.proposed_change}</p><p>{proposal.proposal.rationale}</p><details open><summary>Изменения переходов</summary><h4>До</h4><pre>{JSON.stringify(proposal.proposal.before_transitions,null,2)}</pre><h4>После</h4><pre>{JSON.stringify(proposal.proposal.after_transitions,null,2)}</pre></details><button className="pa-button pa-button--primary" disabled={proposalBusy || Boolean(state.busy)} onClick={() => proposalAction('accept')}>Подтвердить исправление</button><button className="pa-button" disabled={proposalBusy || Boolean(state.busy)} onClick={() => proposalAction('reject')}>Отклонить</button></div> : <button className="pa-button" disabled={proposalBusy || Boolean(state.busy)} onClick={() => proposalAction('create')}>{proposalBusy ? 'Готовим предложение…' : 'Предложить исправление'}</button>}</section>}
+    {canPropose && <section aria-label="Исправление модели"><h3>Что можно сделать</h3><p>Можно попросить предложить изменение модели или уточнить задачу в чате. Предложение нужно проверить: оно ещё не подтверждено проверкой TLC.</p>{proposalError && <p className="pa-inspector-error" role="alert">{proposalError}</p>}{proposal?.status === 'PROPOSED' ? <div><p>{proposal.proposal.proposed_change}</p><details><summary>Подробности предложения</summary><p>{proposal.proposal.issue_summary}</p><p>{proposal.proposal.rationale}</p><h4>До</h4><pre>{JSON.stringify(proposal.proposal.before_transitions,null,2)}</pre><h4>После</h4><pre>{JSON.stringify(proposal.proposal.after_transitions,null,2)}</pre></details><button className="pa-button pa-button--primary" disabled={proposalBusy || Boolean(state.busy)} onClick={() => proposalAction('accept')}>Создать версию для проверки</button><button className="pa-button" disabled={proposalBusy || Boolean(state.busy)} onClick={() => proposalAction('reject')}>Отклонить</button></div> : <button className="pa-button" disabled={proposalBusy || Boolean(state.busy)} onClick={() => proposalAction('create')}>{proposalBusy ? 'Готовим предложение…' : 'Предложить исправление'}</button>}</section>}
     <div className="pa-inspector-actions">
       {view.verified && <button className="pa-button pa-button--primary" disabled={Boolean(state.busy)} onClick={onGenerate}>{state.generated ? 'Сгенерировать заново' : 'Получить код'}</button>}
       {!view.pending && <button className="pa-button" disabled={Boolean(state.busy)} onClick={onVerify}>Повторить проверку</button>}
     </div>
     {(result || state.spec?.verifications?.length > 1) && <details className="pa-technical-details"><summary>Подробности проверки</summary>
+      {result?.property_id && <p>Свойство: <code>{result.property_id}</code></p>}
+      {result?.status === 'PROPERTY_UNREACHABLE' && result.error && <p>{result.error}</p>}
       {result?.statistics && <dl>{Object.entries(result.statistics).map(([key,value]) => <div key={key}><dt>{({states_generated:'Состояний',distinct_states:'Уникальных состояний',depth:'Глубина'})[key] || key}</dt><dd>{value}</dd></div>)}</dl>}
       <p className="pa-inspector-muted">Проверена модель процесса. Это не проверка сгенерированного Python.</p>
       {state.spec?.verifications?.map(item => <p key={item.id}>{new Date(item.queued_at).toLocaleString('ru-RU')} · {statusLabel(item.result_json?.status || item.status)}</p>)}
@@ -218,7 +218,6 @@ export function FilesPanel({ state, view, onOpenSchema, onOpenVerification, onGe
     <p className="pa-files-empty">Прикрепляйте CSV, JSON, JSONL или Parquet к сообщению с помощью скрепки.</p>
     {sourceError && <p role="alert" className="pa-inspector-error">{sourceError}</p>}
     {sources.map(source => <div className="pa-file-row" key={source.id}><Icon name="file" size={20}/><span className="pa-source-name">{source.filename}</span><button type="button" className="pa-text-button" onClick={() => setSourcePreview(source)}>Профиль</button></div>)}
-    {state.projectId && <FileIngestionPanel key={state.projectId} projectId={state.projectId} sources={sources}/>}
     {executionRuns.length > 0 && <section aria-label="Выполнение конвейера"><h3>Выполнение конвейера</h3>{executionRuns.map(run => <article key={run.id}><strong>{({QUEUED:'В очереди',RUNNING:'Выполняется',SUCCEEDED:'Выполнено',FAILED:'Ошибка выполнения',TIMEOUT:'Превышено время'})[run.status] || run.status}</strong><details><summary>Код и параметры</summary><p>Артефакт: {run.artifact_id}</p><pre>{JSON.stringify({источники:run.inputs, параметры:run.parameters}, null, 2)}</pre></details>{run.error && <pre>{run.error}</pre>}{run.result_preview?.warning && <p>{run.result_preview.warning}</p>}{run.result_preview?.rows && <ResultPreview preview={run.result_preview}/>}{run.status === 'SUCCEEDED' && <p><a href={`/api/v1/specifications/${specId}/executions/${run.id}/result`}>Скачать архив</a>{run.result_preview?.csv_available && <> · <a href={`/api/v1/specifications/${specId}/executions/${run.id}/result.csv`}>Скачать CSV</a></>}</p>}</article>)}</section>}
     {executionError && <p role="alert" className="pa-inspector-error">{executionError}</p>}
     <h3>Артефакты</h3>

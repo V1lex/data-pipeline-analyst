@@ -206,26 +206,15 @@ test('pending attachment appears once and returns to composer after failure', as
   await expect(page.getByRole('textbox',{name:'Сообщение аналитику'})).toHaveValue('Проверь файл');
 });
 
-test('local file workflow handles new valid and repeated technical IDs', async ({page}) => {
+test('file attachment does not expose technical ingestion controls', async ({page}) => {
   await page.goto('/');
   await page.locator('input[type=file]').setInputFiles({name:'input.csv',mimeType:'text/csv',buffer:Buffer.from('id,amount\nA,10\n')});
   await page.getByRole('textbox',{name:'Сообщение аналитику'}).fill('Проверить файл');
   await page.getByRole('button',{name:'Отправить сообщение'}).click();
   await expect(page.getByText('Требования собраны. Проверьте спецификацию.',{exact:true})).toBeVisible();
   await page.getByRole('button',{name:'Файлы',exact:true}).click();
-  const panel=page.getByRole('region',{name:'Приёмка файла'});
-  await expect(panel).toBeVisible({timeout:3000});
-  await panel.getByText('Схема процесса',{exact:true}).click();
-  await expect(panel.getByRole('img',{name:/Схема приёмки/})).toBeVisible();
-  await panel.getByLabel('Технический ID').fill('teacher-demo-01');
-  await panel.getByLabel('Исходный файл').selectOption({label:'input.csv'});
-  await panel.getByLabel('id',{exact:true}).check();
-  await panel.getByRole('button',{name:'Обработать сообщение'}).click();
-  await expect(panel.getByText('Новый файл: проверка пройдена',{exact:true})).toBeVisible();
-  await expect(panel.getByText(/файл новый → загрузка → проверка пройдена/)).toBeVisible();
-  await panel.getByRole('button',{name:'Обработать сообщение'}).click();
-  await expect(panel.getByText('Файл уже загружался',{exact:true}).first()).toBeVisible();
-  await expect(panel.getByText(/Статус сохранён локально/).first()).toBeVisible();
+  await expect(page.getByLabel('Технический ID')).toHaveCount(0);
+  await expect(page.getByText('Обработать сообщение',{exact:true})).toHaveCount(0);
 });
 
 test('execution confirmation shows code, maps inputs and displays mocked result', async ({page}) => {
@@ -281,7 +270,7 @@ test('violation, rejection, confirmation and recheck preserve old version (mocke
   await page.getByRole('button',{name:'Отклонить',exact:true}).click();
   await expect(page.locator('#specification-version option')).toHaveCount(2);
   await page.getByRole('button',{name:'Предложить исправление',exact:true}).click();
-  await page.getByRole('button',{name:'Подтвердить исправление',exact:true}).click();
+  await page.getByRole('button',{name:'Создать версию для проверки',exact:true}).click();
   await expect(page.locator('#specification-version option')).toHaveCount(3);
   await expect(page.getByRole('button',{name:'Согласовать',exact:true})).toBeVisible();
   await page.getByRole('button',{name:'Согласовать',exact:true}).click();

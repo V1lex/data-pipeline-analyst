@@ -156,6 +156,22 @@ def validate_proposal(specification, proposal, version):
             raise PipelineError(
                 "REVISION_INVALID", "Нельзя заменять согласованное условие перехода."
             )
+
+    def effective_effects(transition):
+        return [
+            effect
+            for effect in transition.get("effects", [])
+            if not guaranteed_noop({"guard": transition.get("guard"), "effects": [effect]})
+        ]
+
+    if all(
+        effective_effects(item) == effective_effects(originals[item["name"]])
+        for item in patch["transitions"]
+    ):
+        raise PipelineError(
+            "REVISION_INVALID",
+            "Предложение не меняет поведение модели. Нужно пересмотреть порядок шагов.",
+        )
     if any(
         guaranteed_noop(item) and not guaranteed_noop(originals[item["name"]])
         for item in patch["transitions"]
@@ -221,12 +237,20 @@ class RevisionService:
         return spec, run, specification
 
     def latest(self, spec_id, run_id):
-        self._context(spec_id, run_id)
+        spec, _, specification = self._context(spec_id, run_id)
         with self.repository.connect() as connection:
-            return connection.execute(
+            row = connection.execute(
                 "SELECT * FROM revision_proposals WHERE spec_id=%s AND run_id=%s ORDER BY created_at DESC,id DESC LIMIT 1",
                 (spec_id, run_id),
             ).fetchone()
+        if row and row["status"] == "PROPOSED":
+            try:
+                validate_proposal(
+                    specification, RevisionProposal.model_validate(row["proposal"]), spec["version"]
+                )
+            except (PipelineError, ValidationError):
+                return None
+        return row
 
     def propose(self, spec_id, run_id):
         spec, run, specification = self._context(spec_id, run_id)
@@ -236,7 +260,19 @@ class RevisionService:
                 (spec_id, run_id),
             ).fetchone()
             if existing:
-                return existing
+                try:
+                    validate_proposal(
+                        specification,
+                        RevisionProposal.model_validate(existing["proposal"]),
+                        spec["version"],
+                    )
+                except (PipelineError, ValidationError):
+                    connection.execute(
+                        "UPDATE revision_proposals SET status='REJECTED' WHERE id=%s AND status='PROPOSED'",
+                        (existing["id"],),
+                    )
+                else:
+                    return existing
         dialogue_revision = self.repository.get_project(spec["project_id"])["state_revision"]
         context = {
             "requirements": (spec["context_json"] or {}).get("approved_requirements"),

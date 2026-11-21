@@ -15,6 +15,7 @@ def validate_full_file(
 ) -> dict:
     fmt = Path(filename).suffix.lower().lstrip(".")
     missing_counts = {name: 0 for name in required_columns}
+    missing_examples = {name: [] for name in required_columns}
     checked = 0
 
     def check(row):
@@ -24,6 +25,8 @@ def validate_full_file(
             value = row.get(name)
             if value is None or (isinstance(value, str) and not value.strip()):
                 missing_counts[name] += 1
+                if len(missing_examples[name]) < 10:
+                    missing_examples[name].append(checked)
 
     try:
         if fmt == "parquet":
@@ -72,7 +75,12 @@ def validate_full_file(
     missing_columns = sorted(set(required_columns) - names)
     errors = [{"type": "MISSING_COLUMN", "column": name} for name in missing_columns]
     errors += [
-        {"type": "EMPTY_VALUES", "column": name, "count": count}
+        {
+            "type": "EMPTY_VALUES",
+            "column": name,
+            "count": count,
+            "example_rows": missing_examples[name],
+        }
         for name, count in missing_counts.items()
         if count and name not in missing_columns
     ]

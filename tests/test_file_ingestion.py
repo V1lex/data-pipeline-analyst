@@ -15,6 +15,7 @@ def test_full_file_validation_finds_missing_values_after_profile_sample(tmp_path
     assert result["valid"] is False
     assert result["checked_rows"] == 1001
     assert result["errors"][0]["column"] == "amount"
+    assert result["errors"][0]["example_rows"] == [1001]
 
 
 @pytest.mark.postgres
