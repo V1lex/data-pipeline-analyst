@@ -21,6 +21,20 @@ async function screenshot(page,name) {
   await page.screenshot({path:path.join(process.env.DPA_QA_SCREENSHOTS,name),fullPage:true});
 }
 
+test('schema opens in an accessible full-window view and closes on Escape', async ({page}) => {
+  await prepare(page);
+  await page.getByRole('button',{name:'На весь экран',exact:true}).click();
+  const dialog = page.getByRole('dialog',{name:'Схема конвейера'});
+  await expect(dialog).toBeVisible();
+  await expect(dialog.locator('.react-flow')).toBeVisible();
+  const box = await dialog.boundingBox();
+  expect(box.width).toBeGreaterThan(1200);
+  expect(box.height).toBeGreaterThan(800);
+  await screenshot(page, 'schema-full.png');
+  await page.keyboard.press('Escape');
+  await expect(dialog).toHaveCount(0);
+});
+
 test('chat to approved model, real TLC, saved code, reload and version-bound download',async({page})=>{
   await prepare(page);
   await page.getByRole('tab',{name:'Спецификация',exact:true}).click();
@@ -38,9 +52,11 @@ test('chat to approved model, real TLC, saved code, reload and version-bound dow
   expect(download.suggestedFilename()).toMatch(/^pipeline-.*\.py$/);
   expect(await download.failure()).toBeNull();
   await page.getByRole('button',{name:'Закрыть панель',exact:true}).click();
+  await expect(page.locator('.pa-artifacts__answer')).toContainText('Готово');
   await screenshot(page,'chat-desktop.png');
   await page.reload();
   await expect(page.getByText('Требования собраны. Проверьте спецификацию.',{exact:true})).toBeVisible();
+  await expect(page.locator('.pa-artifacts__answer')).toContainText('Готово');
   await page.getByRole('button',{name:'Файлы',exact:true}).click();
   await expect(page.locator('.pa-file-name')).toContainText('pipeline-');
   await page.locator('.pa-file-name').click();

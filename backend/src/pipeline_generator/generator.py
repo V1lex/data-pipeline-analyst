@@ -1,3 +1,4 @@
+import ast
 import json
 import re
 import time
@@ -24,6 +25,52 @@ def _unique_keys(pairs):
     return result
 
 
+def _spark_option_errors(code: str) -> list[str]:
+    """Recognise two known invalid literal Spark options without modifying model code."""
+    try:
+        tree = ast.parse(code)
+    except SyntaxError:
+        return []
+    errors = set()
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call) or not isinstance(node.func, ast.Attribute):
+            continue
+        name = node.func.attr.lower()
+        if name == "option" and len(node.args) >= 2:
+            key, value = node.args[:2]
+            if (
+                isinstance(key, ast.Constant)
+                and isinstance(value, ast.Constant)
+                and str(key.value).lower() == "encoding"
+                and str(value.value).lower().replace("_", "-") == "utf-8-sig"
+            ):
+                errors.add('Spark не поддерживает encoding="utf-8-sig"; используй "UTF-8".')
+        if (
+            name == "mode"
+            and node.args
+            and isinstance(node.args[0], ast.Constant)
+            and node.args[0].value == "error_if_exists"
+        ):
+            errors.add('Spark не поддерживает mode="error_if_exists"; используй "errorifexists".')
+        for keyword in node.keywords:
+            if isinstance(keyword.value, ast.Constant):
+                if (
+                    name in {"options", "csv", "json", "text"}
+                    and keyword.arg == "encoding"
+                    and str(keyword.value.value).lower().replace("_", "-") == "utf-8-sig"
+                ):
+                    errors.add('Spark не поддерживает encoding="utf-8-sig"; используй "UTF-8".')
+                if (
+                    name in {"save", "parquet", "csv", "json"}
+                    and keyword.arg == "mode"
+                    and keyword.value.value == "error_if_exists"
+                ):
+                    errors.add(
+                        'Spark не поддерживает mode="error_if_exists"; используй "errorifexists".'
+                    )
+    return sorted(errors)
+
+
 class PySparkGenerator:
     """Calls an injected LLM; forwards its human answer and code without operation templates."""
 
@@ -35,8 +82,28 @@ class PySparkGenerator:
         self.retry_delay = retry_delay
 
     def generate(self, context: VerifiedContext) -> GeneratedCode:
+        correction = ""
+        for attempt in range(self.max_attempts):
+            generated = self._generate_once(context, correction=correction)
+            errors = _spark_option_errors(generated.content)
+            if not errors:
+                return generated
+            if attempt + 1 >= self.max_attempts:
+                raise PipelineError(
+                    "LLM_INVALID_RESPONSE",
+                    "Модель повторно вернула неподдерживаемые настройки Spark. Попробуйте сгенерировать код ещё раз.",
+                )
+            correction = "\nИсправь ошибки настроек Spark и верни полный ответ заново: " + " ".join(
+                errors
+            )
+        raise PipelineError("LLM_INVALID_RESPONSE", "Не удалось сгенерировать код.")
+
+    def _generate_once(self, context: VerifiedContext, *, correction: str) -> GeneratedCode:
         ensure_verified(context)
-        system = files("pipeline_generator").joinpath("generation_prompt.md").read_text("utf-8")
+        system = (
+            files("pipeline_generator").joinpath("generation_prompt.md").read_text("utf-8")
+            + correction
+        )
         user = context.model_dump_json()
         for attempt in range(self.max_attempts):
             try:

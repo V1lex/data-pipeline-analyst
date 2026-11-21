@@ -1,6 +1,7 @@
 """Trusted backend/worker persistence. Each method closes its own short transaction."""
 
 import hashlib
+import json
 import re
 from typing import Any
 from uuid import UUID, uuid4
@@ -564,7 +565,23 @@ class PostgresRepository:
 
     def list_artifacts(self, spec_id: UUID) -> list[dict]:
         with self.connect() as connection:
-            return connection.execute(
+            artifacts = connection.execute(
                 "SELECT id,spec_id,kind,filename,created_at FROM artifacts WHERE spec_id=%s AND kind='pyspark' ORDER BY created_at,id",
                 (spec_id,),
             ).fetchall()
+            manifests = connection.execute(
+                "SELECT content FROM artifacts WHERE spec_id=%s AND kind='generation_manifest'",
+                (spec_id,),
+            ).fetchall()
+        answers = {}
+        for row in manifests:
+            try:
+                manifest = json.loads(row["content"])
+                result = manifest.get("result") or {}
+                if manifest.get("state") == "GENERATED" and isinstance(result.get("answer"), str):
+                    answers[str(result.get("artifact_id"))] = result["answer"]
+            except (ValueError, TypeError, AttributeError):
+                continue
+        return [
+            {**artifact, "answer": answers.get(str(artifact["id"]), "")} for artifact in artifacts
+        ]

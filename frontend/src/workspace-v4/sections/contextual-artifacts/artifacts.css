@@ -127,3 +127,7 @@
     transition: none;
   }
 }
+
+.pa-artifacts .pa-artifacts__answer{max-width:760px;margin:8px 0 14px;color:var(--pa-text);font-size:15px;line-height:1.65;white-space:pre-wrap;overflow-wrap:anywhere}
+.pa-artifacts .pa-artifacts__answer p{margin:0 0 7px}
+.pa-artifacts .pa-artifacts__answer small{font-size:12px;line-height:1.5;color:var(--pa-muted)}

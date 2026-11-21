@@ -181,6 +181,32 @@ def test_text_and_code_are_both_forwarded_from_llm_without_rewriting():
     assert generated.content == code
 
 
+def test_generation_retries_known_invalid_spark_encoding_and_save_mode():
+    bad = 'df = spark.read.option("encoding", "utf-8-sig").csv(path)\ndf.write.mode("error_if_exists").parquet(out)'
+    good = 'df = spark.read.option("encoding", "UTF-8").csv(path)\ndf.write.mode("errorifexists").parquet(out)'
+    client = FakeLlm(completion(response(content=bad)), completion(response(content=good)))
+    generated = PySparkGenerator(client, retry_delay=0).generate(context())
+    assert generated.content == good
+    assert len(client.calls) == 2
+    assert "utf-8-sig" in client.calls[1][0]
+
+
+def test_generation_refuses_repeated_invalid_spark_options():
+    bad = 'df.write.mode("error_if_exists").parquet(out)'
+    client = FakeLlm(completion(response(content=bad)), completion(response(content=bad)))
+    with pytest.raises(PipelineError, match="LLM_INVALID_RESPONSE"):
+        PySparkGenerator(client, retry_delay=0).generate(context())
+
+
+def test_generation_checks_csv_keyword_options():
+    bad = 'df = spark.read.csv(path, encoding="utf-8-sig")\ndf.write.parquet(out, mode="error_if_exists")'
+    good = (
+        'df = spark.read.csv(path, encoding="UTF-8")\ndf.write.parquet(out, mode="errorifexists")'
+    )
+    client = FakeLlm(completion(response(content=bad)), completion(response(content=good)))
+    assert PySparkGenerator(client, retry_delay=0).generate(context()).content == good
+
+
 def test_transient_errors_are_bounded_and_can_recover():
     client = FakeLlm(
         PipelineError("LLM_TRANSIENT_ERROR", "Retry later", retryable=True), completion()

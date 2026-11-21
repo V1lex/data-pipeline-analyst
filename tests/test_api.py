@@ -79,6 +79,7 @@ def test_complete_http_flow_uses_real_postgres_and_worker(app_client, repository
     code = generated.json()
     assert code["content"] == "print(1)\n"
     assert client.post(f"/api/v1/specifications/{sid}/generate", json=request).json() == code
+    assert client.get(f"/api/v1/specifications/{sid}").json()["artifacts"][0]["answer"] == "Готово"
     download = client.get(f"/api/v1/specifications/{sid}/artifacts/{code['artifact_id']}")
     assert download.text == code["content"]
     assert "attachment" in download.headers["content-disposition"]

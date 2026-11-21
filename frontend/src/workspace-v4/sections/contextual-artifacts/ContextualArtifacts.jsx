@@ -36,7 +36,11 @@ export default function ContextualArtifacts({
       id: generated.artifact_id,
       spec_id: generated.spec_id,
       filename: generated.filename,
+      answer: generated.answer,
     });
+  }
+  if (generated?.spec_id === spec.id && generated.artifact_id && artifacts.has(generated.artifact_id)) {
+    artifacts.set(generated.artifact_id, { ...artifacts.get(generated.artifact_id), answer: generated.answer || artifacts.get(generated.artifact_id).answer });
   }
 
   const run = spec.verifications?.at(-1);
@@ -60,6 +64,7 @@ export default function ContextualArtifacts({
         <ul className="pa-artifacts__files" aria-label="Файлы спецификации">
           {[...artifacts.values()].map(artifact => (
             <li className="pa-artifacts__item" key={artifact.id}>
+              {artifact.answer && <div className="pa-artifacts__answer"><p>{artifact.answer}</p><small>Это описание сгенерированного кода; результат появится после его выполнения.</small></div>}
               <a
                 className="pa-artifacts__file"
                 href={artifactUrl(artifact.spec_id, artifact.id)}

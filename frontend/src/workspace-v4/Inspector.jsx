@@ -6,6 +6,15 @@ import { Icon } from './icons.jsx';
 const names = { DRAFT: 'На согласовании', APPROVED: 'Согласована', QUEUED: 'В очереди', RUNNING: 'Проверяется', PROPERTY_HOLDS: 'Модель проверена', PROPERTY_VIOLATED: 'Найдено нарушение', PROPERTY_UNREACHABLE: 'Состояние недостижимо', MODEL_INVALID: 'Нужно исправить модель', TIMEOUT: 'Проверка не завершилась вовремя', INFRASTRUCTURE_ERROR: 'Проверка недоступна', STATE_LIMIT_REACHED: 'Достигнут лимит состояний' };
 export const statusLabel = status => names[status] || status || '';
 
+function ExpandedGraph({ specification, onClose }) {
+  const ref = useRef(null);
+  useEffect(() => { ref.current?.showModal(); }, []);
+  return <dialog className="pa-graph-dialog" ref={ref} aria-label="Схема конвейера" onClose={onClose}>
+    <header className="pa-graph-dialog__header"><div><h2>Схема конвейера</h2><p>Перемещайте схему и меняйте масштаб кнопками или колесом мыши</p></div><button type="button" className="pa-graph-dialog__close" onClick={() => ref.current?.close()} aria-label="Закрыть схему"><Icon name="close" size={22}/></button></header>
+    <div className="pa-graph pa-graph--expanded"><PipelineGraph specification={specification} expanded/></div>
+  </dialog>;
+}
+
 export function VersionPicker({ state, onSelect }) {
   const versions = state.project?.specifications || [];
   if (!versions.length) return null;
@@ -14,6 +23,7 @@ export function VersionPicker({ state, onSelect }) {
 
 export function SchemaPanel({ state, view, onBuild, onApprove, onVerify, onOpenVerification }) {
   const [tab, setTab] = useState('graph');
+  const [expanded, setExpanded] = useState(false);
   const disabled = Boolean(state.busy || state.loadingSpec);
   return <div className="pa-inspector">
     {state.spec?.status === 'DRAFT' && <p className="pa-inspector-muted">Это план обработки, а не готовый результат. Проверьте его и согласуйте, чтобы запустить проверку модели.</p>}
@@ -21,7 +31,7 @@ export function SchemaPanel({ state, view, onBuild, onApprove, onVerify, onOpenV
       <button type="button" role="tab" aria-selected={tab === 'graph'} onClick={() => setTab('graph')}>Схема</button>
       <button type="button" role="tab" aria-selected={tab === 'json'} onClick={() => setTab('json')}>Спецификация</button>
     </div>
-    {state.loadingSpec ? <p role="status">Открываем спецификацию…</p> : tab === 'graph' ? <div className="pa-graph"><PipelineGraph specification={view.pipeline}/></div> : <div className="pa-specification-json"><pre>{JSON.stringify(view.pipeline || state.spec?.spec_json || {}, null, 2)}</pre></div>}
+    {state.loadingSpec ? <p role="status">Открываем спецификацию…</p> : tab === 'graph' ? <><div className="pa-graph"><PipelineGraph specification={view.pipeline}/></div>{view.pipeline && <button className="pa-graph-expand" type="button" onClick={() => setExpanded(true)}><Icon name="expand" size={17}/>На весь экран</button>}{expanded && <ExpandedGraph specification={view.pipeline} onClose={() => setExpanded(false)}/>}</> : <div className="pa-specification-json"><pre>{JSON.stringify(view.pipeline || state.spec?.spec_json || {}, null, 2)}</pre></div>}
     {!state.specId && !view.pipeline && <p className="pa-inspector-muted">Схема появится, когда уточним требования в диалоге.</p>}
     {state.spec && <p className="pa-inspector-muted">{statusLabel(state.spec.status)}</p>}
     <div className="pa-inspector-actions">
@@ -212,7 +222,6 @@ export function FilesPanel({ state, view, onOpenSchema, onOpenVerification, onGe
     <h3>Артефакты</h3>
     {(state.spec || view.pipeline) && <button className="pa-file-row" type="button" onClick={onOpenSchema}><Icon name="file" size={24}/><span>Спецификация</span><small>Открыть</small></button>}
     {[...artifacts.values()].map(file => <div className="pa-file-row" key={file.id}><Icon name="code" size={24}/><button className="pa-file-name" onClick={() => setPreview(file)}>{file.filename}</button><a className="pa-file-download" href={artifactUrl(file.spec_id,file.id)} aria-label={`Скачать ${file.filename}`} title="Скачать"><Icon name="download" size={20}/></a></div>)}
-    {generated?.answer && <p className="pa-generated-answer">{generated.answer}</p>}
     {!artifacts.size && <p className="pa-files-empty">{state.spec ? 'Код появится после проверки модели и генерации.' : 'В этом диалоге пока нет файлов.'}</p>}
     {view.run && <button className="pa-file-row pa-file-row--subtle" type="button" onClick={onOpenVerification}><span>Результат проверки</span><Icon name="chevron-down" size={18}/></button>}
     {view.verified && <button className="pa-button pa-button--primary" disabled={Boolean(state.busy)} onClick={onGenerate}>{generated ? 'Сгенерировать заново' : 'Получить код'}</button>}
