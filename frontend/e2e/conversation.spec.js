@@ -37,6 +37,29 @@ test('schema opens in an accessible full-window view and closes on Escape', asyn
   await expect(dialog).toHaveCount(0);
 });
 
+test('the side panel can be resized for files and schema and remembers its width', async ({page}) => {
+  await prepare(page);
+  const handle = page.getByRole('separator', {name:'Изменить ширину панели'});
+  const panel = page.locator('.pa-context-drawer__panel');
+  const before = await panel.boundingBox();
+  const grip = await handle.boundingBox();
+  await page.mouse.move(grip.x + grip.width / 2, grip.y + grip.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(grip.x - 100, grip.y + grip.height / 2, {steps:5});
+  await page.mouse.up();
+  await expect.poll(async () => (await panel.boundingBox()).width).toBeGreaterThan(before.width);
+  const widened = (await panel.boundingBox()).width;
+  await page.getByRole('button',{name:'Файлы',exact:true}).click();
+  await expect.poll(async () => (await panel.boundingBox()).width).toBeCloseTo(widened, 0);
+  await handle.focus();
+  await page.keyboard.press('ArrowRight');
+  await expect.poll(async () => (await panel.boundingBox()).width).toBeLessThan(widened);
+  const narrowed = (await panel.boundingBox()).width;
+  await page.reload();
+  await page.getByRole('button',{name:'Файлы',exact:true}).click();
+  await expect.poll(async () => (await panel.boundingBox()).width).toBeCloseTo(narrowed, 0);
+});
+
 test('chat to approved model, real TLC, saved code, reload and version-bound download',async({page})=>{
   await prepare(page);
   await page.getByRole('tab',{name:'Спецификация',exact:true}).click();
@@ -247,6 +270,10 @@ test('execution confirmation shows code, maps inputs and displays mocked result'
   await expect(page.locator('.pa-file-preview pre')).toHaveText('print(1)\n');
   await page.getByRole('button',{name:'Подготовить запуск',exact:true}).click();
   await expect(page.getByLabel('Аргумент для orders.csv')).toHaveValue('--orders');
+  await expect(page.locator('.pa-file-preview pre')).toHaveCSS('white-space', 'pre');
+  const addButton = await page.getByRole('button',{name:'Добавить параметр',exact:true}).boundingBox();
+  const confirmButton = await page.getByRole('button',{name:'Подтвердить запуск',exact:true}).boundingBox();
+  expect(confirmButton.y).toBeGreaterThanOrEqual(addButton.y + addButton.height);
   await page.getByRole('button',{name:'Добавить параметр',exact:true}).click();
   await page.getByLabel('Аргумент', {exact:true}).fill('--minimum');
   await page.getByLabel('Значение', {exact:true}).fill('5');

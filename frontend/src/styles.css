@@ -13,6 +13,12 @@
 .pa-source-name { overflow-wrap: anywhere; }
 .pa-file-row > .pa-text-button { flex: none; white-space: nowrap; }
 .pa-file-preview, .pa-files, .pa-files section { min-width: 0; overflow-wrap: anywhere; }
+.pa-context-drawer__body .pa-file-preview pre { white-space: pre; overflow-wrap: normal; overflow-x: auto; }
+.pa-execution-form { margin-top: 24px; font-size: 13px; line-height: 1.6; }
+.pa-execution-form__fields { display: grid; gap: 12px; margin: 14px 0; }
+.pa-execution-form__fields label { display: grid; gap: 5px; min-width: 0; }
+.pa-execution-form__fields input { box-sizing: border-box; width: 100%; min-width: 0; border: 1px solid var(--pa-line); border-radius: 8px; padding: 9px 11px; background: var(--pa-surface); color: var(--pa-text); font: inherit; }
+.pa-execution-form__actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 16px; }
 
 .pa-graph-expand{display:inline-flex;align-items:center;gap:8px;margin-top:10px;padding:8px 11px;border:1px solid var(--pa-line);border-radius:8px;background:var(--pa-surface);color:var(--pa-text);font:inherit;cursor:pointer}
 .pa-graph-expand:hover{background:#efeee8}
