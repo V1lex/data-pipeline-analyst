@@ -1,6 +1,7 @@
 """Run the trusted execution queue consumer on the host without exposing Docker socket to an app container."""
 
 import os
+import sys
 from pathlib import Path
 
 from dotenv import dotenv_values
@@ -9,6 +10,9 @@ ALLOWED = {"DATABASE_URL", "DATABASE_SCHEMA", "EXECUTION_IMAGE", "EXECUTION_TIME
 
 
 def main():
+    project_root = str(Path(__file__).resolve().parents[1])
+    if project_root not in sys.path:
+        sys.path.insert(0, project_root)
     allowed_environment = ALLOWED | {
         "PATH",
         "HOME",
