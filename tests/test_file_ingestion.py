@@ -18,6 +18,24 @@ def test_full_file_validation_finds_missing_values_after_profile_sample(tmp_path
     assert result["errors"][0]["example_rows"] == [1001]
 
 
+def test_malformed_csv_after_sample_is_reported_as_validation_error(tmp_path):
+    from file_data.validation import validate_in_subprocess
+
+    source = tmp_path / "input.csv"
+    source.write_text("id,amount\n" + "A,5\n" * 1000 + "B,2,unexpected\n")
+    result = validate_in_subprocess(source, source.name, {"delimiter": ","}, ["amount"])
+    assert result["valid"] is False
+    assert result["errors"] == [{"type": "FILE_FORMAT_INVALID"}]
+
+
+def test_missing_file_is_execution_error_not_invalid_business_data(tmp_path):
+    from file_data.profile import ProfileError
+    from file_data.validation import validate_in_subprocess
+
+    with pytest.raises(ProfileError):
+        validate_in_subprocess(tmp_path / "missing", "x.csv", {"delimiter": ","}, ["id"])
+
+
 @pytest.mark.postgres
 def test_file_workflow_valid_invalid_and_duplicate_are_recorded(repository, tmp_path):
     from file_data.ingestion import list_file_events, process_file_event
@@ -140,3 +158,33 @@ def test_ingestion_api_exposes_recorded_local_status(repository, tmp_path):
         app_client.get(f"/api/v1/projects/{project}/file-ingestions").json()[0]["id"]
         == payload["request_id"]
     )
+
+
+@pytest.mark.postgres
+def test_ingestion_api_checks_structured_rules_and_replay_requires_same_rules(repository, tmp_path):
+    from api.app import create_app
+    from fastapi.testclient import TestClient
+
+    project = repository.create_project("Rules API")
+    path = tmp_path / "data.csv"
+    path.write_text("id,price\na,10\na,0\n")
+    source = repository.store_source_file(
+        project, path.name, path.read_bytes(), profile_file(path, path.name, ""), max_files=20
+    )
+    body = {
+        "technical_id": "one",
+        "source_id": str(source),
+        "request_id": str(uuid4()),
+        "rules": [
+            {"kind": "unique", "column": "id"},
+            {"kind": "gt", "column": "price", "value": 0},
+        ],
+    }
+    client = TestClient(create_app(repository=repository))
+    response = client.post(f"/api/v1/projects/{project}/file-ingestions", json=body)
+    assert response.status_code == 201, response.text
+    assert response.json()["status"] == "ERROR"
+    assert len(response.json()["validation"]["rule_errors"]) == 2
+    assert client.post(f"/api/v1/projects/{project}/file-ingestions", json=body).status_code == 201
+    body["rules"] = [{"kind": "number", "column": "price"}]
+    assert client.post(f"/api/v1/projects/{project}/file-ingestions", json=body).status_code == 409

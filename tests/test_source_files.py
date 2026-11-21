@@ -33,6 +33,31 @@ def test_dialogue_supplies_full_file_missing_value_counts(repository):
     assert '"example_rows": [1001]' in client.instruction
 
 
+def test_dialogue_supplies_actual_results_for_business_rules(repository, tmp_path):
+    from agent.analyst.models import AnalystResponse
+    from agent.workflow import AnalystWorkflow
+    from file_data.profile import profile_file
+
+    project = repository.create_project("Business rules")
+    path = tmp_path / "orders.csv"
+    path.write_text("id,price\na,10\na,-1\n")
+    source = repository.store_source_file(
+        project, path.name, path.read_bytes(), profile_file(path, path.name, ""), max_files=3
+    )
+    repository.select_source_files(project, [source])
+
+    class Client:
+        def generate_response(self, messages, system_instruction):
+            self.instruction = system_instruction
+            return AnalystResponse(message="Нарушения найдены", is_complete=False)
+
+    client = Client()
+    AnalystWorkflow(repository, client, None).send(project, "Проверь: price больше 0, id уникален")
+    assert '"rule": "gt"' in client.instruction
+    assert '"rule": "unique"' in client.instruction
+    assert '"example_rows": [2]' in client.instruction
+
+
 def test_source_file_is_project_bound_and_immutable(repository):
     project = repository.create_project("one")
     other = repository.create_project("two")

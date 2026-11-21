@@ -180,6 +180,7 @@ def create_app(*, repository=None, analyst_client=None, builder=None, generation
             body.source_id,
             body.required_columns,
             body.request_id,
+            rules=body.rules,
         )
 
     @app.get("/api/v1/projects/{project_id}/sources/selection")

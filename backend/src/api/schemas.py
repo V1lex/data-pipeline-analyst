@@ -38,6 +38,7 @@ class FileIngestionRequest(BaseModel):
     required_columns: list[
         Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=256)]
     ] = Field(default_factory=list, max_length=20)
+    rules: list[dict] = Field(default_factory=list, max_length=20)
     request_id: UUID
 
 

@@ -8,12 +8,17 @@ from pipeline_generator.storage import _found
 from psycopg.types.json import Jsonb
 
 from file_data.profile import ProfileError
+from file_data.rules import validate_rules
 from file_data.validation import validate_in_subprocess
 
 
 def process_file_event(
-    repository, project_id, technical_id, source_id, required_columns, request_id
+    repository, project_id, technical_id, source_id, required_columns, request_id, *, rules=None
 ):
+    try:
+        rules = validate_rules(rules or [])
+    except ValueError as exc:
+        raise PipelineError("FILE_INVALID", str(exc)) from None
     technical_id = technical_id.strip() if isinstance(technical_id, str) else ""
     if not technical_id or len(technical_id) > 200 or any(ord(c) < 32 for c in technical_id):
         raise PipelineError("FILE_INVALID", "Укажите корректный технический ID файла.")
@@ -42,6 +47,7 @@ def process_file_event(
                 or event["technical_id"] != technical_id
                 or event["source_id"] != source_id
                 or event["required_columns"] != required_columns
+                or event["rules"] != rules
             ):
                 raise PipelineError(
                     "REQUEST_CONFLICT",
@@ -67,10 +73,10 @@ def process_file_event(
                 )
             branch, status, validation = "ALREADY_LOADED", "SUCCESS", previous["validation"]
         else:
-            if not source or not required_columns:
+            if not source or not (required_columns or rules):
                 raise PipelineError(
                     "FILE_INVALID",
-                    "Для нового файла выберите источник и хотя бы одну обязательную колонку.",
+                    "Для нового файла выберите источник и хотя бы одно правило проверки.",
                 )
             try:
                 with tempfile.TemporaryDirectory(prefix="file_ingestion_") as directory:
@@ -81,6 +87,7 @@ def process_file_event(
                         source["filename"],
                         source["profile"].get("read_options", {}),
                         required_columns,
+                        rules,
                     )
             except ProfileError:
                 raise PipelineError(
@@ -95,14 +102,15 @@ def process_file_event(
                 (project_id, technical_id, source_id, Jsonb(validation)),
             )
         saved = connection.execute(
-            """INSERT INTO file_ingestion_events(id,project_id,technical_id,source_id,required_columns,branch,status,validation)
-               VALUES (%s,%s,%s,%s,%s,%s,%s,%s) RETURNING *""",
+            """INSERT INTO file_ingestion_events(id,project_id,technical_id,source_id,required_columns,rules,branch,status,validation)
+               VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s) RETURNING *""",
             (
                 request_id,
                 project_id,
                 technical_id,
                 source_id,
                 Jsonb(required_columns),
+                Jsonb(rules),
                 branch,
                 status,
                 Jsonb(validation),

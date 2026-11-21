@@ -36,6 +36,28 @@ def test_alembic_is_single_schema_owner(empty_schema):
         )
 
 
+def test_ingestion_rule_migration_preserves_previous_events(empty_schema):
+    from db.migrations import upgrade
+
+    upgrade(empty_schema.dsn, schema=empty_schema.schema, revision="20261121_file_ingestion")
+    project = empty_schema.create_project("Previous version")
+    source = empty_schema.store_source_file(project, "data.csv", b"x\n1\n", {}, max_files=1)
+    event_id = uuid4()
+    with empty_schema.connect() as con:
+        con.execute(
+            """INSERT INTO file_ingestion_events(id,project_id,technical_id,source_id,required_columns,branch,status,validation)
+               VALUES (%s,%s,'before',%s,'["x"]','NEW_VALID','SUCCESS','{"valid":true}')""",
+            (event_id, project, source),
+        )
+    upgrade(empty_schema.dsn, schema=empty_schema.schema)
+    with empty_schema.connect() as con:
+        event = con.execute(
+            "SELECT * FROM file_ingestion_events WHERE id=%s", (event_id,)
+        ).fetchone()
+    assert event["rules"] == []
+    assert event["validation"] == {"valid": True}
+
+
 def test_upgrade_preserves_initial_data_without_inventing_context(empty_schema):
     from db.migrations import upgrade
 

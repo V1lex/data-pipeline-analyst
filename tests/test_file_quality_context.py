@@ -33,3 +33,45 @@ def test_non_validation_request_does_not_scan_file():
             raise AssertionError("Should not read a full file for an unrelated request")
 
     assert file_quality_context(Repository(), uuid4(), [], "Привет") == ""
+
+
+def test_explicit_business_rules_are_checked_and_passed_to_model():
+    source_id = uuid4()
+    source = {
+        "id": source_id,
+        "filename": "orders.csv",
+        "profile": {
+            "columns": [{"name": "id"}, {"name": "price"}],
+            "read_options": {"delimiter": ","},
+        },
+    }
+
+    class Repository:
+        def get_source_file(self, project, file_id):
+            return {"content": b"id,price\na,10\na,0\n"}
+
+    context = file_quality_context(
+        Repository(), uuid4(), [source], "Проверь: price больше 0, id уникален"
+    )
+    assert '"rule": "gt"' in context
+    assert '"rule": "unique"' in context
+    assert '"example_rows": [2]' in context
+
+
+def test_context_lists_only_columns_with_checked_rules():
+    source_id = uuid4()
+    source = {
+        "id": source_id,
+        "filename": "orders.csv",
+        "profile": {
+            "columns": [{"name": "price"}, {"name": "status"}],
+            "read_options": {"delimiter": ","},
+        },
+    }
+
+    class Repository:
+        def get_source_file(self, project, file_id):
+            return {"content": b"price,status\n1,paid\n"}
+
+    context = file_quality_context(Repository(), uuid4(), [source], "Проверь: price больше 0")
+    assert '"checked_columns": ["price"]' in context

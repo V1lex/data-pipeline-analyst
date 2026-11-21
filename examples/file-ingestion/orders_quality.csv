@@ -1,0 +1,4 @@
+order_id,quantity,price,order_date,city,status
+1001,2,100,2025-01-10,Москва,paid
+1002,1,50,2025-01-11,Казань,pending
+1001,0,-5,2025-02-30,,unknown

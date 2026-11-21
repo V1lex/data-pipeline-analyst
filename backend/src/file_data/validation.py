@@ -1,22 +1,28 @@
-"""Validate explicit non-empty-column rules against every row of a bounded file."""
+"""Validate explicit quality rules against every row of a bounded file."""
 
 import csv
 import json
 import os
 import subprocess
 import sys
+from datetime import date
 from pathlib import Path
 
 from file_data.profile import ProfileError, _flat
+from file_data.rules import decimal_value, validate_rules
 
 
 def validate_full_file(
-    path: Path, filename: str, options: dict, required_columns: list[str]
+    path: Path, filename: str, options: dict, required_columns: list[str], rules=None
 ) -> dict:
+    rules = validate_rules(rules or [])
     fmt = Path(filename).suffix.lower().lstrip(".")
     missing_counts = {name: 0 for name in required_columns}
     missing_examples = {name: [] for name in required_columns}
     checked = 0
+    rule_counts = [0] * len(rules)
+    rule_examples = [[] for _ in rules]
+    unique_values = [set() if rule["kind"] == "unique" else None for rule in rules]
 
     def check(row):
         nonlocal checked
@@ -27,6 +33,39 @@ def validate_full_file(
                 missing_counts[name] += 1
                 if len(missing_examples[name]) < 10:
                     missing_examples[name].append(checked)
+        for index, rule in enumerate(rules):
+            value = row.get(rule["column"])
+            missing = value is None or (isinstance(value, str) and not value.strip())
+            kind = rule["kind"]
+            invalid = missing if kind == "not_null" else False
+            if not missing:
+                if kind == "unique":
+                    token = str(value)
+                    invalid = token in unique_values[index]
+                    unique_values[index].add(token)
+                elif kind == "one_of":
+                    invalid = str(value) not in rule["values"]
+                elif kind == "date":
+                    try:
+                        text = str(value)
+                        invalid = len(text) != 10 or date.fromisoformat(text).isoformat() != text
+                    except ValueError:
+                        invalid = True
+                elif kind in {"number", "gt", "gte", "lt", "lte"}:
+                    numeric = decimal_value(value)
+                    invalid = numeric is None
+                    if not invalid and kind != "number":
+                        bound = decimal_value(rule["value"])
+                        invalid = not {
+                            "gt": numeric > bound,
+                            "gte": numeric >= bound,
+                            "lt": numeric < bound,
+                            "lte": numeric <= bound,
+                        }[kind]
+            if invalid:
+                rule_counts[index] += 1
+                if len(rule_examples[index]) < 10:
+                    rule_examples[index].append(checked)
 
     try:
         if fmt == "parquet":
@@ -68,11 +107,11 @@ def validate_full_file(
                         check(row)
         else:
             raise ProfileError("Этот формат не поддерживается.")
-    except (OSError, ValueError, csv.Error, UnicodeError) as exc:
+    except (ValueError, csv.Error, UnicodeError) as exc:
         if isinstance(exc, ProfileError):
             raise
         raise ProfileError("Не удалось прочитать файл для проверки.") from None
-    missing_columns = sorted(set(required_columns) - names)
+    missing_columns = sorted((set(required_columns) | {rule["column"] for rule in rules}) - names)
     errors = [{"type": "MISSING_COLUMN", "column": name} for name in missing_columns]
     errors += [
         {
@@ -86,11 +125,25 @@ def validate_full_file(
     ]
     if not checked:
         errors.append({"type": "EMPTY_FILE"})
-    return {"valid": not errors, "checked_rows": checked, "errors": errors}
+    rule_errors = [
+        {
+            "rule": rule["kind"],
+            "column": rule["column"],
+            "count": rule_counts[index],
+            "example_rows": rule_examples[index],
+        }
+        for index, rule in enumerate(rules)
+        if rule_counts[index] and rule["column"] not in missing_columns
+    ]
+    result = {"valid": not errors and not rule_errors, "checked_rows": checked, "errors": errors}
+    if rules:
+        result["rule_errors"] = rule_errors
+        result["checked_rules"] = rules
+    return result
 
 
 def validate_in_subprocess(
-    path: Path, filename: str, options: dict, required_columns: list[str]
+    path: Path, filename: str, options: dict, required_columns: list[str], rules=None
 ) -> dict:
     env = {
         "PATH": os.defpath,
@@ -108,6 +161,7 @@ def validate_in_subprocess(
                     "filename": filename,
                     "options": options,
                     "required_columns": required_columns,
+                    "rules": rules or [],
                 }
             ),
             capture_output=True,
@@ -138,11 +192,22 @@ def main():
         print(
             json.dumps(
                 validate_full_file(
-                    Path(args["path"]), args["filename"], args["options"], args["required_columns"]
+                    Path(args["path"]),
+                    args["filename"],
+                    args["options"],
+                    args["required_columns"],
+                    args.get("rules", []),
                 ),
                 ensure_ascii=False,
             )
         )
+    except ProfileError:
+        print(
+            json.dumps(
+                {"valid": False, "checked_rows": 0, "errors": [{"type": "FILE_FORMAT_INVALID"}]}
+            )
+        )
+        return 0
     except Exception:
         print(json.dumps({"error": "Не удалось безопасно проверить файл."}, ensure_ascii=False))
         return 1
