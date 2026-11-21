@@ -22,6 +22,7 @@ from pipeline_generator.storage import PostgresRepository
 
 from api.schemas import (
     ExecutionRequest,
+    FileIngestionRequest,
     GenerationRequest,
     MessageRequest,
     ProjectRenameRequest,
@@ -161,6 +162,25 @@ def create_app(*, repository=None, analyst_client=None, builder=None, generation
     @app.get("/api/v1/projects/{project_id}/sources")
     def list_sources(project_id: UUID):
         return repo().list_source_files(project_id)
+
+    @app.get("/api/v1/projects/{project_id}/file-ingestions")
+    def file_ingestion_events(project_id: UUID):
+        from file_data.ingestion import list_file_events
+
+        return list_file_events(repo(), project_id)
+
+    @app.post("/api/v1/projects/{project_id}/file-ingestions", status_code=201)
+    def file_ingestion(project_id: UUID, body: FileIngestionRequest):
+        from file_data.ingestion import process_file_event
+
+        return process_file_event(
+            repo(),
+            project_id,
+            body.technical_id,
+            body.source_id,
+            body.required_columns,
+            body.request_id,
+        )
 
     @app.get("/api/v1/projects/{project_id}/sources/selection")
     def selected_sources(project_id: UUID):

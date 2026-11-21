@@ -30,6 +30,17 @@ class SourceSelectionRequest(BaseModel):
     file_ids: list[UUID] = Field(max_length=100)
 
 
+class FileIngestionRequest(BaseModel):
+    technical_id: Annotated[
+        str, StringConstraints(strip_whitespace=True, min_length=1, max_length=200)
+    ]
+    source_id: UUID | None = None
+    required_columns: list[
+        Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=256)]
+    ] = Field(default_factory=list, max_length=20)
+    request_id: UUID
+
+
 class ExecutionRequest(BaseModel):
     artifact_id: UUID
     request_id: UUID

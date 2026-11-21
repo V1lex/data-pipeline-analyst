@@ -1,0 +1,26 @@
+{
+  "variables": [
+    {"name": "stage", "type": "enum", "values": ["RECEIVED", "DUPLICATE", "NEW", "LOADED", "VALID", "INVALID", "DONE_DUPLICATE", "DONE_VALID", "DONE_ERROR"]},
+    {"name": "validated", "type": "boolean"},
+    {"name": "result", "type": "enum", "values": ["NONE", "SUCCESS", "ERROR"]}
+  ],
+  "initial": {"stage": "RECEIVED", "validated": false, "result": "NONE"},
+  "transitions": [
+    {"name": "Existing", "guard": {"eq": [{"var": "stage"}, "RECEIVED"]}, "effects": [{"set": ["stage", "DUPLICATE"]}]},
+    {"name": "New", "guard": {"eq": [{"var": "stage"}, "RECEIVED"]}, "effects": [{"set": ["stage", "NEW"]}]},
+    {"name": "Load", "guard": {"eq": [{"var": "stage"}, "NEW"]}, "effects": [{"set": ["stage", "LOADED"]}]},
+    {"name": "CheckValid", "guard": {"eq": [{"var": "stage"}, "LOADED"]}, "effects": [{"set": ["stage", "VALID"]}, {"set": ["validated", true]}]},
+    {"name": "CheckInvalid", "guard": {"eq": [{"var": "stage"}, "LOADED"]}, "effects": [{"set": ["stage", "INVALID"]}, {"set": ["validated", true]}]},
+    {"name": "FinishDuplicate", "guard": {"eq": [{"var": "stage"}, "DUPLICATE"]}, "effects": [{"set": ["stage", "DONE_DUPLICATE"]}, {"set": ["result", "SUCCESS"]}]},
+    {"name": "FinishValid", "guard": {"eq": [{"var": "stage"}, "VALID"]}, "effects": [{"set": ["stage", "DONE_VALID"]}, {"set": ["result", "SUCCESS"]}]},
+    {"name": "FinishError", "guard": {"eq": [{"var": "stage"}, "INVALID"]}, "effects": [{"set": ["stage", "DONE_ERROR"]}, {"set": ["result", "ERROR"]}]}
+  ],
+  "properties": [
+    {"id": "DuplicateReachable", "type": "reachable", "expression": {"eq": [{"var": "stage"}, "DONE_DUPLICATE"]}},
+    {"id": "ValidReachable", "type": "reachable", "expression": {"eq": [{"var": "stage"}, "DONE_VALID"]}},
+    {"id": "ErrorReachable", "type": "reachable", "expression": {"eq": [{"var": "stage"}, "DONE_ERROR"]}},
+    {"id": "DuplicateNotValidated", "type": "forbidden_state", "expression": {"and": [{"eq": [{"var": "stage"}, "DONE_DUPLICATE"]}, {"eq": [{"var": "validated"}, true]}]}},
+    {"id": "ErrorRequiresValidation", "type": "forbidden_state", "expression": {"and": [{"eq": [{"var": "result"}, "ERROR"]}, {"eq": [{"var": "validated"}, false]}]}},
+    {"id": "NoDeadlock", "type": "deadlock_free", "expression": {"in": [{"var": "stage"}, ["DONE_DUPLICATE", "DONE_VALID", "DONE_ERROR"]]}}
+  ]
+}

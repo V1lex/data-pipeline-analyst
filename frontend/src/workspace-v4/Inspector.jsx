@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import PipelineGraph from '../components/PipelineGraph.jsx';
 import { artifactUrl, request } from '../api/client.js';
 import { Icon } from './icons.jsx';
+import FileIngestionPanel from './FileIngestionPanel.jsx';
 
 const names = { DRAFT: 'На согласовании', APPROVED: 'Согласована', QUEUED: 'В очереди', RUNNING: 'Проверяется', PROPERTY_HOLDS: 'Модель проверена', PROPERTY_VIOLATED: 'Найдено нарушение', PROPERTY_UNREACHABLE: 'Состояние недостижимо', MODEL_INVALID: 'Нужно исправить модель', TIMEOUT: 'Проверка не завершилась вовремя', INFRASTRUCTURE_ERROR: 'Проверка недоступна', STATE_LIMIT_REACHED: 'Достигнут лимит состояний' };
 export const statusLabel = status => names[status] || status || '';
@@ -217,6 +218,7 @@ export function FilesPanel({ state, view, onOpenSchema, onOpenVerification, onGe
     <p className="pa-files-empty">Прикрепляйте CSV, JSON, JSONL или Parquet к сообщению с помощью скрепки.</p>
     {sourceError && <p role="alert" className="pa-inspector-error">{sourceError}</p>}
     {sources.map(source => <div className="pa-file-row" key={source.id}><Icon name="file" size={20}/><span className="pa-source-name">{source.filename}</span><button type="button" className="pa-text-button" onClick={() => setSourcePreview(source)}>Профиль</button></div>)}
+    {state.projectId && <FileIngestionPanel key={state.projectId} projectId={state.projectId} sources={sources}/>}
     {executionRuns.length > 0 && <section aria-label="Выполнение конвейера"><h3>Выполнение конвейера</h3>{executionRuns.map(run => <article key={run.id}><strong>{({QUEUED:'В очереди',RUNNING:'Выполняется',SUCCEEDED:'Выполнено',FAILED:'Ошибка выполнения',TIMEOUT:'Превышено время'})[run.status] || run.status}</strong><details><summary>Код и параметры</summary><p>Артефакт: {run.artifact_id}</p><pre>{JSON.stringify({источники:run.inputs, параметры:run.parameters}, null, 2)}</pre></details>{run.error && <pre>{run.error}</pre>}{run.result_preview?.warning && <p>{run.result_preview.warning}</p>}{run.result_preview?.rows && <ResultPreview preview={run.result_preview}/>}{run.status === 'SUCCEEDED' && <p><a href={`/api/v1/specifications/${specId}/executions/${run.id}/result`}>Скачать архив</a>{run.result_preview?.csv_available && <> · <a href={`/api/v1/specifications/${specId}/executions/${run.id}/result.csv`}>Скачать CSV</a></>}</p>}</article>)}</section>}
     {executionError && <p role="alert" className="pa-inspector-error">{executionError}</p>}
     <h3>Артефакты</h3>
