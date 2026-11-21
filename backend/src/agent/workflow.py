@@ -245,17 +245,16 @@ class AnalystWorkflow:
             ]
             if sources:
                 history.append(ChatMessage(role=Role.SYSTEM, content=source_context(sources)))
-            messages = self.repository.list_messages(project_id)
-            spec = self.builder.build_verifiable_specification(history)
-            validate_source_context(spec, sources)
             from pipeline_spec.models import PipelineSpecification
 
             raw = dict(session.current_draft)
             raw.setdefault("version", "1.0.0")
             raw.setdefault("metadata", {"id": "draft", "name": "Draft"})
-            approved = PipelineSpecification.model_validate(raw).model_dump(
-                mode="json", by_alias=True
-            )
+            approved_spec = PipelineSpecification.model_validate(raw)
+            messages = self.repository.list_messages(project_id)
+            spec = self.builder.build_from_approved_draft(approved_spec, history)
+            validate_source_context(spec, sources)
+            approved = approved_spec.model_dump(mode="json", by_alias=True)
             actual = spec.model_dump(mode="json", by_alias=True)
             protected = ["sources", "steps", "sinks"]
             if "constraints" in session.current_draft:

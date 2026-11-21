@@ -72,7 +72,7 @@ export default function App() {
       </header>
       <Conversation project={state.project} loading={state.loadingProject} text={state.text} busy={state.busy} pendingMessage={state.pendingMessage} error={drawer ? '' : state.error} attachments={state.attachments} onAttachFiles={files => store.attachFiles(files)} onRemoveAttachment={id => store.removeAttachment(id)} onTextChange={value => store.setText(value)} onSend={event => { event.preventDefault(); void store.send(); }} onDismissError={() => store.dismissError()}
         artifacts={<ContextualArtifacts spec={state.spec} generated={state.generated} onOpenSpecification={() => openDrawer('schema')} onOpenVerification={() => openDrawer('verification')}/>}
-        actions={view.canBuild && !state.specId ? <button className="pa-context-action" disabled={Boolean(state.busy)} onClick={build}><Icon name="schema" size={18}/>Собрать спецификацию</button> : null}/>
+        actions={view.canBuild && !state.specId ? <button className="pa-context-action" disabled={Boolean(state.busy)} onClick={build}><Icon name="schema" size={18}/>Подготовить к проверке</button> : null}/>
     </main>
     <ContextDrawer mode={drawer} title={titles[drawer] || ''} onClose={() => setDrawer(null)} openerRef={openerRef} fallbackFocusRef={composerFocusRef}>
       {state.error && <div className="pa-drawer-error" role="alert"><p>{state.error}</p><button type="button" className="pa-text-button" onClick={() => store.dismissError()}>Закрыть ошибку</button></div>}

@@ -16,6 +16,7 @@ export function SchemaPanel({ state, view, onBuild, onApprove, onVerify, onOpenV
   const [tab, setTab] = useState('graph');
   const disabled = Boolean(state.busy || state.loadingSpec);
   return <div className="pa-inspector">
+    {state.spec?.status === 'DRAFT' && <p className="pa-inspector-muted">Это план обработки, а не готовый результат. Проверьте его и согласуйте, чтобы запустить проверку модели.</p>}
     <div className="pa-inspector-tabs" role="tablist" aria-label="Представление спецификации">
       <button type="button" role="tab" aria-selected={tab === 'graph'} onClick={() => setTab('graph')}>Схема</button>
       <button type="button" role="tab" aria-selected={tab === 'json'} onClick={() => setTab('json')}>Спецификация</button>
@@ -24,7 +25,7 @@ export function SchemaPanel({ state, view, onBuild, onApprove, onVerify, onOpenV
     {!state.specId && !view.pipeline && <p className="pa-inspector-muted">Схема появится, когда уточним требования в диалоге.</p>}
     {state.spec && <p className="pa-inspector-muted">{statusLabel(state.spec.status)}</p>}
     <div className="pa-inspector-actions">
-      {view.canBuild && !state.specId && <button className={state.spec ? 'pa-button' : 'pa-button pa-button--primary'} onClick={onBuild} disabled={disabled}>{state.spec ? 'Новая спецификация' : 'Собрать спецификацию'}</button>}
+      {view.canBuild && !state.specId && <button className={state.spec ? 'pa-button' : 'pa-button pa-button--primary'} onClick={onBuild} disabled={disabled}>{state.spec ? 'Новая спецификация' : 'Подготовить к проверке'}</button>}
       {state.spec?.status === 'DRAFT' && <button className="pa-button pa-button--primary" disabled={disabled} onClick={onApprove}>Согласовать</button>}
       {state.spec?.status === 'APPROVED' && <button className="pa-button" disabled={disabled || view.pending} onClick={onVerify}>{view.pending ? 'Проверяем модель…' : 'Проверить модель'}</button>}
       {view.run && <button className="pa-text-button" onClick={onOpenVerification}>Результат проверки</button>}

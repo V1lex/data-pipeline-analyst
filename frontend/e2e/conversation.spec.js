@@ -11,7 +11,7 @@ async function prepare(page) {
   await message.fill('Выручка по городам\nЗаказы из s3://lake/orders/, только COMPLETED, результат в s3://lake/mart/orders/.');
   await message.press('Enter');
   await expect(page.getByText('Требования собраны. Проверьте спецификацию.',{exact:true})).toBeVisible();
-  await page.getByRole('button',{name:'Собрать спецификацию',exact:true}).click();
+  await page.getByRole('button',{name:'Подготовить к проверке',exact:true}).click();
   await expect(page.locator('.pa-context-drawer')).toBeVisible();
   await expect(page.getByRole('button',{name:'Согласовать',exact:true})).toBeVisible();
 }
@@ -234,7 +234,7 @@ test('violation, rejection, confirmation and recheck preserve old version (mocke
   await message.fill('Нарушение: проверьте синтетическую модель заказов');
   await message.press('Enter');
   await expect(page.getByText('Требования собраны. Проверьте спецификацию.',{exact:true})).toBeVisible();
-  await page.getByRole('button',{name:'Собрать спецификацию',exact:true}).click();
+  await page.getByRole('button',{name:'Подготовить к проверке',exact:true}).click();
   await page.getByRole('button',{name:'Согласовать',exact:true}).click();
   await page.getByRole('button',{name:'Проверить модель',exact:true}).click();
   await expect(page.locator('.pa-verification-summary')).toHaveText('Найдено нарушение',{timeout:30000});

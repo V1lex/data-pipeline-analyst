@@ -7,6 +7,7 @@ from typing import Any
 
 from google import genai
 from google.genai import types
+from pipeline_generator.errors import PipelineError
 from pipeline_spec.models import PipelineSpecification
 from pydantic import ValidationError
 from tenacity import retry, retry_if_exception, stop_after_attempt, wait_exponential
@@ -182,7 +183,9 @@ class SpecificationBuilder:
                 FormalModelValidationError,
             ) as e:
                 last_error = str(e)
-                logger.warning(f"Validation failed on attempt {attempt}: {last_error}")
+                logger.warning(
+                    "Specification validation failed on attempt %s: %s", attempt, type(e).__name__
+                )
                 if attempt == self.max_retries:
                     raise RuntimeError(
                         f"Failed to generate valid PipelineSpecification after {self.max_retries} attempts. "
@@ -197,6 +200,67 @@ class SpecificationBuilder:
     ) -> PipelineSpecification:
         """Explicit transition to verifiable specification, requiring formal model and semantic validation."""
         return self.build_from_dialogue(history, require_formal_model=True)
+
+    def build_from_approved_draft(
+        self, approved: PipelineSpecification, history: list[ChatMessage]
+    ) -> PipelineSpecification:
+        """Keep the validated pipeline intact; ask the model only for its formal model."""
+        from compiler.formal_check.src.models.input import Input
+        from compiler.formal_check.src.models.output import ModelInvalid
+        from compiler.formal_check.src.services.validator import validate_input
+
+        scope = check_dialogue_scope(
+            [message.content for message in history if message.role == Role.USER]
+        )
+        if not scope.is_in_scope:
+            raise OutOfScopeError(scope.reason)
+        original = approved.model_dump(mode="json", by_alias=True)
+        original.pop("formal_model", None)
+        context = json.dumps(original, ensure_ascii=False)
+        schema = json.dumps(Input.model_json_schema(), ensure_ascii=False)
+        prompt = (
+            "Построй формальную модель для приведённого конвейера. Верни только JSON "
+            "с ключом formal_model. Не создавай новые требования, ограничения, источники или операции. "
+            "Отражай только заданные этапы и зависимости; не выдумывай сценарии ошибок, "
+            "проверки данных или недостижимые условия, которых нет в плане. "
+            "Модель должна содержать непустые transitions и properties, отражающие шаги конвейера; "
+            "не утверждай, что она проверяет значения исходных данных, если она этого не делает. "
+            "Структура модели строго соответствует JSON-схеме: " + schema + "\nКонвейер: " + context
+        )
+        last_error = ""
+        for _ in range(self.max_retries):
+            raw = self._call_llm_json(
+                prompt + ("\nОшибки формальной модели: " + last_error if last_error else "")
+            )
+            try:
+                if len(raw.encode("utf-8")) > MAX_SPEC_JSON_BYTES:
+                    raise ValueError("Ответ слишком большой")
+                result = json.loads(raw)
+                _check_json_depth(result)
+                formal = result.get("formal_model") if isinstance(result, dict) else None
+                if (
+                    not isinstance(formal, dict)
+                    or not formal.get("transitions")
+                    or not formal.get("properties")
+                ):
+                    raise ValueError("Нужны formal_model с непустыми transitions и properties")
+                validation = validate_input(formal)
+                if isinstance(validation, ModelInvalid):
+                    last_error = json.dumps(
+                        [
+                            {"location": e.location, "type": e.type, "message": e.message}
+                            for e in validation.errors
+                        ],
+                        ensure_ascii=False,
+                    )
+                    continue
+                return PipelineSpecification.model_validate({**original, "formal_model": formal})
+            except (ValueError, TypeError, ValidationError):
+                last_error = "Верни корректный JSON с полем formal_model по указанной схеме."
+        raise PipelineError(
+            "LLM_INVALID_RESPONSE",
+            "Не удалось подготовить модель проверки. Черновик сохранён, попробуйте ещё раз.",
+        )
 
     @retry(
         retry=retry_if_exception(_is_transient_error),
@@ -304,6 +368,9 @@ class MockSpecificationBuilder(SpecificationBuilder):
         super().__init__(api_key="mock_key")
         self.canned_spec_dict = canned_spec_dict
         self.canned_raw_json = canned_raw_json
+
+    def build_from_approved_draft(self, approved, history):
+        return self.build_verifiable_specification(history)
 
     def _call_llm_json(self, prompt: str) -> str:
         if self.canned_raw_json is not None:
