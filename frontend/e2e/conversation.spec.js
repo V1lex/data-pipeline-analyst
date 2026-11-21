@@ -171,6 +171,25 @@ test('uploads a source and restores its profile after reload', async ({page}) =>
   await expect(page.getByText('orders.csv',{exact:true})).toBeVisible();
 });
 
+test('pending attachment appears once and returns to composer after failure', async ({page}) => {
+  let release;
+  const gate = new Promise(resolve => { release = resolve; });
+  await page.route('**/api/v1/projects/*/messages', async route => {
+    await gate;
+    await route.fulfill({status:502, json:{error:{code:'LLM_TRANSIENT_ERROR',message:'Попробуйте ещё раз'}}});
+  });
+  await page.goto('/');
+  await page.locator('input[type=file]').setInputFiles({name:'one.csv', mimeType:'text/csv', buffer:Buffer.from('value\n1\n')});
+  await page.getByRole('textbox',{name:'Сообщение аналитику'}).fill('Проверь файл');
+  await page.getByRole('button',{name:'Отправить сообщение'}).click();
+  await expect(page.getByLabel('Ваше отправляемое сообщение').getByText('one.csv')).toBeVisible();
+  await expect(page.getByLabel('Прикреплённые файлы')).toHaveCount(0);
+  await expect(page.getByRole('textbox',{name:'Сообщение аналитику'})).toHaveValue('');
+  release();
+  await expect(page.getByLabel('Прикреплённые файлы').getByText('one.csv')).toBeVisible();
+  await expect(page.getByRole('textbox',{name:'Сообщение аналитику'})).toHaveValue('Проверь файл');
+});
+
 test('execution confirmation shows code, maps inputs and displays mocked result', async ({page}) => {
   const sourceId = '00000000-0000-4000-8000-000000000001';
   let submitted = null;

@@ -108,6 +108,11 @@ class PostgresRepository:
             existing = connection.execute(
                 "SELECT project_id,filename,checksum FROM source_files WHERE id=%s", (file_id,)
             ).fetchone()
+            if not existing:
+                existing = connection.execute(
+                    "SELECT f.project_id,f.filename,f.checksum,f.id AS source_id FROM source_upload_aliases a JOIN source_files f ON f.id=a.source_id WHERE a.request_id=%s",
+                    (file_id,),
+                ).fetchone()
             if existing:
                 if (
                     existing["project_id"] != project_id
@@ -117,7 +122,24 @@ class PostgresRepository:
                     raise PipelineError(
                         "FILE_INVALID", "Идентификатор загрузки уже использован для другого файла."
                     )
-                return file_id
+                return existing.get("source_id", file_id)
+            duplicate = connection.execute(
+                "SELECT id FROM source_files WHERE project_id=%s AND filename=%s AND checksum=%s AND profile->'read_options' IS NOT DISTINCT FROM %s::jsonb ORDER BY created_at,id LIMIT 1",
+                (
+                    project_id,
+                    filename,
+                    checksum,
+                    Jsonb(profile.get("read_options"))
+                    if profile.get("read_options") is not None
+                    else None,
+                ),
+            ).fetchone()
+            if duplicate:
+                connection.execute(
+                    "INSERT INTO source_upload_aliases(request_id,source_id) VALUES (%s,%s)",
+                    (file_id, duplicate["id"]),
+                )
+                return duplicate["id"]
             count = connection.execute(
                 "SELECT count(*) AS count FROM source_files WHERE project_id=%s", (project_id,)
             ).fetchone()["count"]

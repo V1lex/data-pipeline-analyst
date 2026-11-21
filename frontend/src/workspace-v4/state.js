@@ -2,6 +2,14 @@ import { request, errorText } from '../api/client.js';
 
 const SELECTION_KEY = 'pipeline:last-conversation';
 
+function conversationTitle(content) {
+  const line = content.split('\n')[0].trim().replace(/\s+/g, ' ');
+  if (line.length <= 44) return line;
+  const prefix = line.slice(0, 44);
+  const boundary = prefix.lastIndexOf(' ');
+  return (boundary > 20 ? prefix.slice(0, boundary) : prefix).trimEnd() + '…';
+}
+
 export function selectWorkspace(state) {
   const snapshot = state.project?.analyst || {};
   const run = state.spec?.verifications?.at(-1);
@@ -155,7 +163,7 @@ export class WorkspaceController {
       this._set({ pendingMessage: { content, attachments: this.state.attachments.map(item => ({ id: item.id, filename: item.file.name })) } });
       let id = this.state.projectId;
       if (!id) {
-        const name = content.split('\n')[0].slice(0, 70);
+        const name = conversationTitle(content);
         const created = await this.api('/projects', { method: 'POST', body: { name } });
         id = created.id;
         ++this.projectRead;

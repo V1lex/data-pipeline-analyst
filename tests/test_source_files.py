@@ -35,6 +35,32 @@ def test_source_file_count_limit(repository):
         repository.store_source_file(project, "two.csv", b"a\n2\n", {}, max_files=1)
 
 
+def test_same_file_reuploaded_reuses_existing_source(repository):
+    project = repository.create_project("duplicates")
+    first = repository.store_source_file(project, "orders.csv", b"a\n1\n", {}, max_files=1)
+    second = repository.store_source_file(project, "orders.csv", b"a\n1\n", {}, max_files=1)
+    assert second == first
+    assert len(repository.list_source_files(project)) == 1
+
+
+def test_duplicate_upload_request_id_cannot_be_reused_for_different_content(repository):
+    from uuid import uuid4
+
+    project = repository.create_project("duplicate retry")
+    first = repository.store_source_file(project, "orders.csv", b"a\n1\n", {}, max_files=2)
+    request_id = uuid4()
+    assert (
+        repository.store_source_file(
+            project, "orders.csv", b"a\n1\n", {}, max_files=2, file_id=request_id
+        )
+        == first
+    )
+    with pytest.raises(PipelineError, match="FILE_INVALID"):
+        repository.store_source_file(
+            project, "orders.csv", b"a\n2\n", {}, max_files=2, file_id=request_id
+        )
+
+
 def test_selection_rejects_other_project_and_invalidates_old_draft(repository):
     first = repository.create_project("one")
     other = repository.create_project("two")

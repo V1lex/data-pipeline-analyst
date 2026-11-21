@@ -29,7 +29,8 @@ export default function Conversation({
 }) {
   // Generated content belongs to the parent-provided artifact and action slots.
   const messages = Array.isArray(project?.messages) ? project.messages : [];
-  const questions = project?.analyst?.last_response?.clarification_questions || [];
+  const questions = (project?.analyst?.last_response?.clarification_questions || []).filter(question =>
+    !String(project?.messages?.findLast(message => message.role === 'assistant')?.content || '').includes(question.question));
   const projectKey = project?.id ?? null;
   const lastMessage = messages.at(-1);
   const lastMessageKey = lastMessage?.id ?? lastMessage?.content ?? null;
@@ -230,12 +231,12 @@ export default function Conversation({
             <input type="file" accept=".csv,.json,.jsonl,.parquet" multiple disabled={disabled} onChange={event => { onAttachFiles?.(Array.from(event.target.files || [])); event.target.value = ''; }}/>
           </label>
           <div className="pa-conversation__input-area">
-          {attachments.length > 0 && <div className="pa-conversation__attachments" aria-label="Прикреплённые файлы">{attachments.map(item => <span className="pa-conversation__attachment" key={item.id}><span>{item.file.name}</span><button type="button" disabled={disabled} aria-label={`Убрать ${item.file.name}`} onClick={() => onRemoveAttachment?.(item.id)}><Icon name="close" size={15}/></button></span>)}</div>}
+          {!pendingMessage && attachments.length > 0 && <div className="pa-conversation__attachments" aria-label="Прикреплённые файлы">{attachments.map(item => <span className="pa-conversation__attachment" key={item.id}><span>{item.file.name}</span><button type="button" disabled={disabled} aria-label={`Убрать ${item.file.name}`} onClick={() => onRemoveAttachment?.(item.id)}><Icon name="close" size={15}/></button></span>)}</div>}
           <label className="pa-conversation__sr-only" htmlFor={textareaId}>Сообщение аналитику</label>
           <textarea
             id={textareaId}
             ref={textareaRef}
-            value={text}
+            value={pendingMessage ? '' : text}
             onChange={event => onTextChange?.(event.target.value)}
             onKeyDown={handleKeyDown}
             onCompositionStart={() => { composingRef.current = true; }}

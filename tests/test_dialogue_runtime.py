@@ -7,6 +7,26 @@ from agent.analyst.session import AnalystSession
 from pipeline_spec.models import PipelineSpecification
 
 
+def test_chat_does_not_expose_internal_contract_errors_or_repeat_model_questions():
+    response = AnalystResponse(
+        message="Использую сумму quantity * price. При необходимости изменю расчёт.",
+        is_complete=False,
+        draft={
+            "sources": [],
+            "steps": [{"id": "join", "operation": {"type": "join", "keys": ["id"]}}],
+            "sinks": [],
+        },
+        clarification_questions=[
+            ClarificationQuestion(category="sinks", question="Куда сохранить результат?")
+        ],
+    )
+    session = AnalystSession(llm_client=Replies(response))
+    reply = session.send_message("Объедини данные")
+    assert [q.question for q in reply.clarification_questions] == ["Куда сохранить результат?"]
+    assert "PipelineSpecification" not in reply.message
+    assert "подтвердите следующие" not in reply.message.lower()
+
+
 class Replies:
     def __init__(self, *responses):
         self.responses = iter(responses)
@@ -244,6 +264,47 @@ def test_agent_parameter_update_cannot_self_approve_and_applies_only_after_conse
     assert session.current_draft["steps"][1]["operation"]["condition"] != condition
     assert session.send_message("approve first:condition rev 1").is_complete
     assert session.current_draft["steps"][1]["operation"]["condition"] == condition
+
+
+def test_obvious_default_is_applied_with_distinct_provenance():
+    condition = {"gt": [{"col": "amount"}, {"lit": 10}]}
+    reply = AnalystResponse(
+        message="Использую порог 10; могу изменить.",
+        is_complete=True,
+        draft=draft(),
+        parameter_updates=[
+            DraftParameter(
+                step_id="first", field_name="condition", value=condition, origin="assumed_default"
+            )
+        ],
+    )
+    session = AnalystSession(llm_client=Replies(reply))
+    session.send_message("Отфильтруй значения")
+    assert session.parameters_metadata[0].origin == "assumed_default"
+    assert session.parameters_metadata[0].status == "assumed"
+    assert session.current_draft["steps"][1]["operation"]["condition"] == condition
+
+
+def test_default_never_overrides_explicit_user_value():
+    explicit = {"gt": [{"col": "amount"}, {"lit": 50}]}
+    assumed = {"gt": [{"col": "amount"}, {"lit": 10}]}
+    reply = AnalystResponse(
+        message="Обновил",
+        is_complete=True,
+        draft=draft(),
+        parameter_updates=[
+            DraftParameter(
+                step_id="first", field_name="condition", value=assumed, origin="assumed_default"
+            )
+        ],
+    )
+    session = AnalystSession(llm_client=Replies(reply))
+    session.add_parameter(
+        "first", "condition", explicit, ParameterOrigin.USER_EXPLICIT, AgreementStatus.AGREED
+    )
+    session.send_message("Продолжай")
+    assert session.current_draft["steps"][1]["operation"]["condition"] == explicit
+    assert session.parameters_metadata[0].origin == ParameterOrigin.USER_EXPLICIT
 
 
 def test_text_only_deterministic_questions_are_not_concrete_parameters():

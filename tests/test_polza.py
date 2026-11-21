@@ -32,6 +32,7 @@ def test_polza_supports_dialogue_specification_and_generator():
     assert completion.provider == "polza" and completion.finish_reason == "STOP"
     payload = json.loads(requests[0].content)
     assert payload["model"] == "deepseek/deepseek-v4.1-flash-1017"
+    assert payload["reasoning"] == {"type": "disabled"}
     assert payload["messages"][-1] == {"role": "user", "content": "Привет"}
     assert requests[0].url == "https://polza.ai/api/v1/chat/completions"
     assert requests[0].headers["authorization"] == "Bearer test-key"

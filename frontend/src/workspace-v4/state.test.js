@@ -80,6 +80,17 @@ test('first message creates a conversation and displays the persisted answer', a
   assert.equal(store.getSnapshot().pendingMessage, null);
 });
 
+test('new conversation title shortens a long first message at a word boundary', async () => {
+  const db = backend();
+  const store = new WorkspaceController({ api: db.api });
+  const message = 'Соедини заказы с ценами и посчитай общую выручку по каждому городу';
+  store.setText(message);
+  await store.send();
+  assert.ok(db.projects[0].name.length <= 45);
+  assert.ok(db.projects[0].name.endsWith('…'));
+  assert.ok(message.startsWith(db.projects[0].name.slice(0, -1)));
+});
+
 test('failed first turn keeps the text and retries inside the same created project', async () => {
   const db = backend();
   const store = new WorkspaceController({ api: db.api, storage: null });

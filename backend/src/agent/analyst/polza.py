@@ -31,6 +31,7 @@ class PolzaLLMClient(BaseLLMClient):
                     "model": self.model_name,
                     "messages": messages,
                     "response_format": {"type": "json_object"},
+                    "reasoning": {"type": "disabled"},
                     "temperature": 0.2,
                     "max_tokens": int(os.getenv("LLM_MAX_OUTPUT_TOKENS", "8192")),
                 },

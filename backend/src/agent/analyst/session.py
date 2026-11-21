@@ -143,27 +143,23 @@ class AnalystSession:
             response.is_complete = False
 
             # Inject missing parameters into clarification questions if not already asked
-            existing_questions = {q.question for q in response.clarification_questions}
-            for missing in report.missing_parameters:
-                if missing.question not in existing_questions:
+            if not response.clarification_questions:
+                for missing in report.missing_parameters:
+                    if missing.question.startswith("Исправьте "):
+                        continue
                     response.clarification_questions.append(
                         ClarificationQuestion(
                             category=QuestionCategory(
                                 self._map_op_to_category(missing.operation_type)
                             ),
-                            question=f"[{missing.step_id}] {missing.question}",
+                            question=missing.question,
                             step_id=missing.step_id,
                             field_name=missing.field_name,
-                            suggestion=f"[Предложение аналитика]: {missing.suggestion}",
+                            suggestion=missing.suggestion,
                         )
                     )
-
-            # If there are pending unconfirmed suggestions, inform the user
-            if report.pending_suggestions:
-                pending_names = [
-                    f"'{p.field_name}' ({p.value})" for p in report.pending_suggestions
-                ]
-                response.message += f"\n\nПожалуйста, подтвердите следующие предложения аналитика: {', '.join(pending_names)}."
+                    if len(response.clarification_questions) == 2:
+                        break
 
         self.last_response = response
         self.state = self.get_state()
@@ -445,12 +441,23 @@ class AnalystSession:
             existing = next(
                 (p for p in self.parameters_metadata if p.param_id == expected_id), None
             )
+            if (
+                existing
+                and update.origin == ParameterOrigin.ASSUMED_DEFAULT
+                and (
+                    existing.origin == ParameterOrigin.USER_EXPLICIT
+                    or existing.status in {AgreementStatus.AGREED, AgreementStatus.REJECTED}
+                )
+            ):
+                continue
             if existing and update.revision < existing.revision:
                 raise ValueError(f"Stale parameter revision: {expected_id}")
             param = update.model_copy(deep=True)
             param.status = (
                 AgreementStatus.AGREED
                 if param.origin == ParameterOrigin.USER_EXPLICIT
+                else AgreementStatus.ASSUMED
+                if param.origin == ParameterOrigin.ASSUMED_DEFAULT
                 else AgreementStatus.PENDING
             )
             if existing:
@@ -470,7 +477,7 @@ class AnalystSession:
 
     def _apply_agreed_parameters(self) -> None:
         for param in self.parameters_metadata:
-            if param.status != AgreementStatus.AGREED:
+            if param.status not in {AgreementStatus.AGREED, AgreementStatus.ASSUMED}:
                 continue
             target = self._parameter_target(param.step_id)
             if target is None or "." in param.field_name:

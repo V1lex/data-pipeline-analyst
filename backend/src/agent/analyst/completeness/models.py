@@ -10,12 +10,14 @@ from pydantic import BaseModel, Field
 class ParameterOrigin(StrEnum):
     USER_EXPLICIT = "user_explicit"  # Явно введено пользователем
     AGENT_SUGGESTION = "agent_suggestion"  # Предложено агентом (требует подтверждения)
+    ASSUMED_DEFAULT = "assumed_default"  # Обратимое допущение, не подтверждённое пользователем
 
 
 class AgreementStatus(StrEnum):
     AGREED = "agreed"  # Согласовано с пользователем
     PENDING = "pending"  # Ожидает подтверждения пользователя
     REJECTED = "rejected"  # Отклонено
+    ASSUMED = "assumed"  # Применено как допущение, можно изменить
 
 
 class SessionState(StrEnum):
