@@ -37,6 +37,66 @@ def test_polza_supports_dialogue_specification_and_generator():
     assert requests[0].headers["authorization"] == "Bearer test-key"
 
 
+def test_polza_repairs_invalid_analyst_category_before_returning_response():
+    from agent.analyst.polza import PolzaLLMClient
+
+    requests = []
+    replies = [
+        {
+            "message": "Уточните данные",
+            "is_complete": False,
+            "clarification_questions": [{"category": "data", "question": "Какие данные?"}],
+        },
+        {
+            "message": "Уточните данные",
+            "is_complete": False,
+            "clarification_questions": [{"category": "sources", "question": "Какие данные?"}],
+        },
+    ]
+
+    def respond(request):
+        requests.append(json.loads(request.content))
+        return httpx.Response(
+            200,
+            json={
+                "choices": [
+                    {"message": {"content": json.dumps(replies.pop(0))}, "finish_reason": "stop"}
+                ]
+            },
+        )
+
+    client = PolzaLLMClient(
+        api_key="test", client=httpx.Client(transport=httpx.MockTransport(respond))
+    )
+    result = client.generate_response([ChatMessage(role=Role.USER, content="Данные")], "system")
+    assert result.clarification_questions[0].category == "sources"
+    assert len(requests) == 2
+    assert "clarification_questions" in requests[1]["messages"][-1]["content"]
+
+
+def test_polza_stops_after_bounded_invalid_responses():
+    from agent.analyst.polza import PolzaLLMClient
+
+    calls = []
+
+    def respond(request):
+        calls.append(request)
+        return httpx.Response(
+            200,
+            json={
+                "choices": [{"message": {"content": '{"message":"oops"}'}, "finish_reason": "stop"}]
+            },
+        )
+
+    client = PolzaLLMClient(
+        api_key="test", client=httpx.Client(transport=httpx.MockTransport(respond))
+    )
+    with pytest.raises(PipelineError) as exc:
+        client.generate_response([ChatMessage(role=Role.USER, content="Данные")], "system")
+    assert exc.value.code == "LLM_INVALID_RESPONSE"
+    assert len(calls) == 3
+
+
 @pytest.mark.parametrize(
     "status, code, retryable",
     [

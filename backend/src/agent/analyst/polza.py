@@ -78,14 +78,35 @@ class PolzaLLMClient(BaseLLMClient):
             {"role": "assistant" if msg.role == "model" else str(msg.role), "content": msg.content}
             for msg in messages
         )
-        text, reason = self._request(conversation)
-        self._check_finish(reason)
-        try:
-            return AnalystResponse.model_validate_json(text)
-        except (ValueError, ValidationError):
-            raise PipelineError(
-                "LLM_INVALID_RESPONSE", "Модель вернула некорректный ответ аналитика."
-            ) from None
+        for attempt in range(3):
+            text, reason = self._request(conversation)
+            self._check_finish(reason)
+            try:
+                return AnalystResponse.model_validate_json(text)
+            except ValidationError as error:
+                if attempt == 2:
+                    break
+                problems = [
+                    {"field": ".".join(map(str, item["loc"])), "type": item["type"]}
+                    for item in error.errors()[:20]
+                ]
+                conversation.extend(
+                    [
+                        {"role": "assistant", "content": text},
+                        {
+                            "role": "user",
+                            "content": (
+                                "Предыдущий ответ не прошёл проверку формата. Исправь только формат и верни полный JSON. "
+                                "Допустимые категории вопросов: sources, fields, formula, business_rules, sinks, general. "
+                                "Ошибки полей: " + json.dumps(problems, ensure_ascii=False)
+                            ),
+                        },
+                    ]
+                )
+        raise PipelineError(
+            "LLM_INVALID_RESPONSE",
+            "Модель не смогла сформировать корректный ответ. Повторите запрос.",
+        ) from None
 
     @staticmethod
     def _check_finish(reason):

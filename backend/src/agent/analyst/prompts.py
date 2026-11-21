@@ -33,6 +33,8 @@ ANALYST_SYSTEM_INSTRUCTION += """
 (список {category,question,suggestion,step_id,field_name,value}), identified_sources
 (список строк), identified_operations (список строк), business_goals (строка/null),
 draft (объект {sources,steps,sinks} или null).
+category в каждом clarification_questions — строго одно из: sources, fields,
+formula, business_rules, sinks, general. Не используй другие значения или русский перевод.
 Всегда поддерживай draft: полный текущий черновик с устойчивыми ID, а не только названия операций.
 Источники: {id,name,format,location}; шаги: {id,name,inputs,operation}; выходы:
 {id,name,from_step,format,location,save_mode}. operation соответствует PipelineSpecification.
