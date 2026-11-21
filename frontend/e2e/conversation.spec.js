@@ -11,6 +11,8 @@ async function prepare(page) {
   await message.fill('Выручка по городам\nЗаказы из s3://lake/orders/, только COMPLETED, результат в s3://lake/mart/orders/.');
   await message.press('Enter');
   await expect(page.getByText('Требования собраны. Проверьте спецификацию.',{exact:true})).toBeVisible();
+  await page.getByRole('button',{name:'Открыть схему',exact:true}).click();
+  await expect(page.getByRole('button',{name:'Подготовить к проверке',exact:true})).toHaveCount(1);
   await page.getByRole('button',{name:'Подготовить к проверке',exact:true}).click();
   await expect(page.locator('.pa-context-drawer')).toBeVisible();
   await expect(page.getByRole('button',{name:'Согласовать',exact:true})).toBeVisible();
@@ -45,6 +47,7 @@ test('chat to approved model, real TLC, saved code, reload and version-bound dow
   await expect(page.locator('.pa-verification-summary')).toHaveText('Модель проверена',{timeout:30000});
   await page.getByRole('button',{name:'Получить код',exact:true}).click();
   await expect(page.locator('.pa-file-name')).toContainText('pipeline-');
+  await expect(page.getByRole('button',{name:'Сгенерировать заново',exact:true})).toHaveCount(0);
   await screenshot(page,'chat-desktop-files.png');
   const downloadEvent=page.waitForEvent('download');
   await page.locator('.pa-file-download').click();
@@ -261,6 +264,7 @@ test('violation, rejection, confirmation and recheck preserve old version (mocke
   await message.fill('Нарушение: проверьте синтетическую модель заказов');
   await message.press('Enter');
   await expect(page.getByText('Требования собраны. Проверьте спецификацию.',{exact:true})).toBeVisible();
+  await page.getByRole('button',{name:'Открыть схему',exact:true}).click();
   await page.getByRole('button',{name:'Подготовить к проверке',exact:true}).click();
   await page.getByRole('button',{name:'Согласовать',exact:true}).click();
   await page.getByRole('button',{name:'Проверить модель',exact:true}).click();

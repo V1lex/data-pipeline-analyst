@@ -126,7 +126,7 @@ function ResultPreview({ preview }) {
   return <div className="pa-result-table"><table><thead><tr>{columns.map(column => <th key={column} scope="col">{column}</th>)}</tr></thead><tbody>{rows.map((row, index) => <tr key={index}>{columns.map(column => <td key={column}>{row[column] == null ? '—' : String(row[column])}</td>)}</tr>)}</tbody></table></div>;
 }
 
-export function FilesPanel({ state, view, onOpenSchema, onOpenVerification, onGenerate }) {
+export function FilesPanel({ state, view, onOpenSchema, onOpenVerification }) {
   const [preview, setPreview] = useState(null);
   const [content, setContent] = useState('');
   const [error, setError] = useState('');
@@ -225,6 +225,5 @@ export function FilesPanel({ state, view, onOpenSchema, onOpenVerification, onGe
     {[...artifacts.values()].map(file => <div className="pa-file-row" key={file.id}><Icon name="code" size={24}/><button className="pa-file-name" onClick={() => setPreview(file)}>{file.filename}</button><a className="pa-file-download" href={artifactUrl(file.spec_id,file.id)} aria-label={`Скачать ${file.filename}`} title="Скачать"><Icon name="download" size={20}/></a></div>)}
     {!artifacts.size && <p className="pa-files-empty">{state.spec ? 'Код появится после проверки модели и генерации.' : 'В этом диалоге пока нет файлов.'}</p>}
     {view.run && <button className="pa-file-row pa-file-row--subtle" type="button" onClick={onOpenVerification}><span>Результат проверки</span><Icon name="chevron-down" size={18}/></button>}
-    {view.verified && <button className="pa-button pa-button--primary" disabled={Boolean(state.busy)} onClick={onGenerate}>{generated ? 'Сгенерировать заново' : 'Получить код'}</button>}
   </div>;
 }
